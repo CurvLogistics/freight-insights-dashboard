@@ -2,8 +2,10 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_URL_RAW = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+// Some dashboards copy a `/rest/v1/` URL; supabase-js expects the base project URL.
+const SUPABASE_URL = SUPABASE_URL_RAW?.replace(/\/rest\/v1\/?$/, '') ?? SUPABASE_URL_RAW;
 
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";

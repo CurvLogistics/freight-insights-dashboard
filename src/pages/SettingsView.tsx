@@ -12,7 +12,59 @@ import {
   ConnectionStatus, TurvoStepResult,
   saveCredentials, loadCredentials, clearCredentials, testConnection,
 } from '@/lib/turvoService';
-import { Loader2, CheckCircle2, XCircle, AlertTriangle, Plug, Trash2, Eye, EyeOff, Plus, X } from 'lucide-react';
+import { useData } from '@/context/DataContext';
+import { Loader2, CheckCircle2, XCircle, AlertTriangle, Plug, Trash2, Eye, EyeOff, Plus, X, Database, RefreshCw } from 'lucide-react';
+
+function ReportingDatabaseCard() {
+  const { dataSource, dataLoading, dataError, rawLoads, refreshFromSupabase } = useData();
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Database className="w-4 h-4" />
+              Reporting database (Supabase)
+            </CardTitle>
+            <CardDescription>
+              Turvo API sync is pending. Until then, loads are stored in Supabase from the current Turvo export.
+            </CardDescription>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => void refreshFromSupabase()} disabled={dataLoading} className="gap-1.5 shrink-0">
+            {dataLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+            Refresh
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-3 text-sm">
+        <div className="grid grid-cols-2 gap-3">
+          <div className="rounded-lg border p-3">
+            <p className="text-xs text-muted-foreground">Active source</p>
+            <p className="font-medium capitalize mt-0.5">{dataLoading ? 'Loading…' : dataSource}</p>
+          </div>
+          <div className="rounded-lg border p-3">
+            <p className="text-xs text-muted-foreground">Loads in memory</p>
+            <p className="font-medium mt-0.5">{rawLoads.length.toLocaleString()}</p>
+          </div>
+        </div>
+        {dataError && (
+          <Alert>
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>Using fallback data</AlertTitle>
+            <AlertDescription className="text-xs">{dataError}</AlertDescription>
+          </Alert>
+        )}
+        <ol className="list-decimal list-inside space-y-1 text-xs text-muted-foreground">
+          <li>Export loads from Turvo as <strong>CSV</strong> (API access pending).</li>
+          <li>Use sidebar <strong>Import Turvo CSV</strong> — data shows immediately and is upserted into Supabase.</li>
+          <li>Or re-seed the bundled export with <code className="text-foreground">npm run seed:loads</code>.</li>
+          <li>Click Refresh anytime to reload from Supabase.</li>
+        </ol>
+      </CardContent>
+    </Card>
+  );
+}
 
 const emptyCreds: TurvoCredentials = {
   apiUsername: '', apiPassword: '', clientName: '', clientSecret: '', apiKey: '',
@@ -107,6 +159,8 @@ const SettingsView = () => {
         <h1 className="text-2xl font-bold text-foreground">Settings</h1>
         <p className="text-sm text-muted-foreground mt-1">Manage integrations and data connections</p>
       </div>
+
+      <ReportingDatabaseCard />
 
       <Card>
         <CardHeader>
@@ -286,7 +340,13 @@ const SettingsView = () => {
           </div>
 
           <p className="text-xs text-muted-foreground border-l-2 border-muted pl-3">
-            Credentials are stored in your browser's local storage.
+            Only Base URL and Username are remembered in your browser. Password, Client Secret, and API Key are
+            never saved here and must be re-entered each session. For production, configure Turvo credentials as
+            Supabase Edge Function secrets (<code className="text-foreground">TURVO_BASE_URL</code>,{' '}
+            <code className="text-foreground">TURVO_USERNAME</code>, <code className="text-foreground">TURVO_PASSWORD</code>,{' '}
+            <code className="text-foreground">TURVO_CLIENT_ID</code>, <code className="text-foreground">TURVO_CLIENT_SECRET</code>,{' '}
+            <code className="text-foreground">TURVO_API_KEY</code>) so they're read server-side and the fields above
+            can stay empty — see README.
           </p>
 
           {/* Actions */}

@@ -14,13 +14,96 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      loads: {
+        Row: {
+          id: string
+          load_id: string
+          customer_name: string | null
+          carrier_name: string | null
+          origin_city: string | null
+          origin_state: string | null
+          destination_city: string | null
+          destination_state: string | null
+          broker: string | null
+          team: string | null
+          equipment_type: string | null
+          shipment_status: string | null
+          pickup_date: string | null
+          delivery_date: string | null
+          scheduled_pickup_date: string | null
+          scheduled_delivery_date: string | null
+          revenue: number | null
+          carrier_cost: number | null
+          ready_to_bill_date: string | null
+          invoice_sent_date: string | null
+          service_reason: string | null
+          source: string
+          imported_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          load_id: string
+          customer_name?: string | null
+          carrier_name?: string | null
+          origin_city?: string | null
+          origin_state?: string | null
+          destination_city?: string | null
+          destination_state?: string | null
+          broker?: string | null
+          team?: string | null
+          equipment_type?: string | null
+          shipment_status?: string | null
+          pickup_date?: string | null
+          delivery_date?: string | null
+          scheduled_pickup_date?: string | null
+          scheduled_delivery_date?: string | null
+          revenue?: number | null
+          carrier_cost?: number | null
+          ready_to_bill_date?: string | null
+          invoice_sent_date?: string | null
+          service_reason?: string | null
+          source?: string
+          imported_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          load_id?: string
+          customer_name?: string | null
+          carrier_name?: string | null
+          origin_city?: string | null
+          origin_state?: string | null
+          destination_city?: string | null
+          destination_state?: string | null
+          broker?: string | null
+          team?: string | null
+          equipment_type?: string | null
+          shipment_status?: string | null
+          pickup_date?: string | null
+          delivery_date?: string | null
+          scheduled_pickup_date?: string | null
+          scheduled_delivery_date?: string | null
+          revenue?: number | null
+          carrier_cost?: number | null
+          ready_to_bill_date?: string | null
+          invoice_sent_date?: string | null
+          service_reason?: string | null
+          source?: string
+          imported_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      upsert_loads_batch: {
+        Args: { rows: Json }
+        Returns: number
+      }
     }
     Enums: {
       [_ in never]: never

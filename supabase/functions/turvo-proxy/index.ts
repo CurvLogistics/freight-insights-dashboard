@@ -24,13 +24,26 @@ function maskHeaders(headers: Record<string, string>): Record<string, string> {
 }
 
 // ── Turvo OAuth: token exchange then test call ──
+// Credentials come from Supabase secrets (TURVO_*) when configured server-side; the request body is
+// only a fallback for local/dev testing before secrets are set, and can never override a configured secret.
 async function handleTurvoOAuth(body: Record<string, any>) {
-  const { base_url, username, password, client_id, client_secret, api_key, test_endpoint } = body;
+  const base_url = Deno.env.get("TURVO_BASE_URL") || body.base_url;
+  const username = Deno.env.get("TURVO_USERNAME") || body.username;
+  const password = Deno.env.get("TURVO_PASSWORD") || body.password;
+  const client_id = Deno.env.get("TURVO_CLIENT_ID") || body.client_id;
+  const client_secret = Deno.env.get("TURVO_CLIENT_SECRET") || body.client_secret;
+  const api_key = Deno.env.get("TURVO_API_KEY") || body.api_key;
+  const test_endpoint = body.test_endpoint;
+  const usingServerSecrets = !!(
+    Deno.env.get("TURVO_BASE_URL") || Deno.env.get("TURVO_USERNAME") || Deno.env.get("TURVO_CLIENT_ID")
+  );
 
   if (!base_url || !username || !password || !client_id || !client_secret || !api_key) {
     return jsonResponse({
       success: false,
-      error: "Missing required fields: base_url, username, password, client_id, client_secret, api_key",
+      error: usingServerSecrets
+        ? "Server-side Turvo secrets are partially configured. Set all of TURVO_BASE_URL, TURVO_USERNAME, TURVO_PASSWORD, TURVO_CLIENT_ID, TURVO_CLIENT_SECRET, TURVO_API_KEY."
+        : "Missing required fields: base_url, username, password, client_id, client_secret, api_key",
       steps: [],
     }, 400);
   }

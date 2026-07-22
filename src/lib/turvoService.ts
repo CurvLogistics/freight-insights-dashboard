@@ -61,14 +61,20 @@ export interface TurvoTestResult {
 
 const STORAGE_KEY = 'freightops_turvo_credentials';
 
+// Only non-secret fields are persisted to localStorage. Password, Client Secret, and API Key
+// are never saved in the browser — for production use, configure them as Supabase Edge Function
+// secrets (TURVO_*) so they're read server-side and never transit or live in the client. See README.
+type PersistedCredentials = Pick<TurvoCredentials, 'baseApiUrl' | 'apiUsername'>;
+
 export function saveCredentials(creds: TurvoCredentials): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(creds));
+  const persisted: PersistedCredentials = { baseApiUrl: creds.baseApiUrl, apiUsername: creds.apiUsername };
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(persisted));
 }
 
-export function loadCredentials(): TurvoCredentials | null {
+export function loadCredentials(): Partial<TurvoCredentials> | null {
   const raw = localStorage.getItem(STORAGE_KEY);
   if (!raw) return null;
-  try { return JSON.parse(raw) as TurvoCredentials; } catch { return null; }
+  try { return JSON.parse(raw) as Partial<TurvoCredentials>; } catch { return null; }
 }
 
 export function clearCredentials(): void {

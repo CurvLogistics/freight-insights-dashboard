@@ -22,14 +22,24 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     currentView, setCurrentView, filters, setFilters, importCSV,
     teams, equipmentTypes, comparisonMode, setComparisonMode,
     timeframePreset, setTimeframePreset, viewMode, setViewMode,
+    dataSource, dataLoading, dataError, refreshFromSupabase, rawLoads, importBusy,
   } = useData();
+
+  const sourceLabel =
+    dataLoading ? 'Loading…' :
+    importBusy ? `Saving Turvo export… ${rawLoads.length.toLocaleString()} loads` :
+    dataSource === 'supabase' ? `Supabase · ${rawLoads.length.toLocaleString()} loads` :
+    dataSource === 'csv' ? `CSV import · ${rawLoads.length.toLocaleString()} loads` :
+    `Sample export · ${rawLoads.length.toLocaleString()} loads`;
   const fileRef = useRef<HTMLInputElement>(null);
 
   const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => importCSV(reader.result as string);
+    reader.onload = () => {
+      void importCSV(reader.result as string);
+    };
     reader.readAsText(file);
     e.target.value = '';
   };
@@ -44,6 +54,20 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             <span className="text-sidebar-foreground">FreightOps</span>
           </h1>
           <p className="text-xs text-sidebar-foreground/50 mt-1">Logistics Intelligence</p>
+          <button
+            type="button"
+            title={dataError ?? 'Refresh from Supabase'}
+            onClick={() => void refreshFromSupabase()}
+            className={`mt-2 w-full text-left text-[11px] leading-snug rounded px-2 py-1.5 transition-colors ${
+              dataSource === 'supabase'
+                ? 'bg-emerald-500/15 text-emerald-300'
+                : dataError
+                  ? 'bg-amber-500/15 text-amber-200'
+                  : 'bg-sidebar-accent/40 text-sidebar-foreground/60'
+            }`}
+          >
+            {sourceLabel}
+          </button>
         </div>
 
         <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
@@ -67,10 +91,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <input ref={fileRef} type="file" accept=".csv" onChange={handleUpload} className="hidden" />
           <button
             onClick={() => fileRef.current?.click()}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm bg-sidebar-primary/20 text-sidebar-primary hover:bg-sidebar-primary/30 transition-colors font-medium"
+            disabled={importBusy || dataLoading}
+            className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm bg-sidebar-primary/20 text-sidebar-primary hover:bg-sidebar-primary/30 transition-colors font-medium disabled:opacity-50"
           >
             <Upload className="w-4 h-4" />
-            Import CSV
+            {importBusy ? 'Importing…' : 'Import Turvo CSV'}
           </button>
         </div>
       </aside>
