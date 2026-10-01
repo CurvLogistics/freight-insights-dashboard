@@ -1,0 +1,146 @@
+import { useState } from 'react';
+import { Sparkles, ExternalLink } from 'lucide-react';
+import { toast } from 'sonner';
+import { useData } from '@/context/DataContext';
+import { ComputedLoad } from '@/types/loads';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Textarea } from '@/components/ui/textarea';
+import { Button } from '@/components/ui/button';
+
+const SUGGESTIONS = [
+  'Which customers drove the most gross profit?',
+  'Which carriers have the worst on-time delivery?',
+  'Summarize margin performance for this period',
+];
+
+// Browsers and claude.ai reject very long URLs; above this the prompt goes through the clipboard only
+const MAX_URL_LENGTH = 8000;
+
+const fmt = (n: number) => Math.round(n).toLocaleString('en-US');
+const pct = (num: number, den: number) => (den > 0 ? `${((num / den) * 100).toFixed(1)}%` : 'n/a');
+
+// One compact table per dimension, top N by load count
+function topTable(title: string, loads: ComputedLoad[], key: (l: ComputedLoad) => string | undefined, n = 10) {
+  const groups = new Map<string, { loads: number; revenue: number; gp: number; onTime: number; late: number }>();
+  for (const l of loads) {
+    const k = key(l);
+    if (!k || k === 'Unknown') continue;
+    const g = groups.get(k) ?? { loads: 0, revenue: 0, gp: 0, onTime: 0, late: 0 };
+    g.loads++;
+    g.revenue += l.revenue ?? 0;
+    g.gp += l.grossProfit ?? 0;
+    if (l.onTimeDelivery === 'On Time') g.onTime++;
+    if (l.onTimeDelivery === 'Late') g.late++;
+    groups.set(k, g);
+  }
+  if (groups.size === 0) return '';
+  const rows = [...groups.entries()]
+    .sort((a, b) => b[1].loads - a[1].loads)
+    .slice(0, n)
+    .map(([name, g]) => `${name} | ${g.loads} | $${fmt(g.revenue)} | $${fmt(g.gp)} | ${pct(g.gp, g.revenue)} | ${pct(g.onTime, g.onTime + g.late)}`);
+  return `\n${title} (name | loads | revenue | gross profit | margin | on-time delivery):\n${rows.join('\n')}\n`;
+}
+
+function buildPrompt(question: string, loads: ComputedLoad[], header: string) {
+  const revenue = loads.reduce((s, l) => s + (l.revenue ?? 0), 0);
+  const gp = loads.reduce((s, l) => s + (l.grossProfit ?? 0), 0);
+  const onTime = (k: 'onTimePickup' | 'onTimeDelivery') => {
+    const known = loads.filter(l => l[k] !== 'Unknown');
+    return pct(known.filter(l => l[k] === 'On Time').length, known.length);
+  };
+
+  return [
+    question,
+    '',
+    'Context: snapshot from my FreightOps dashboard (Turvo load data). If you need load-level detail, use the Turvo connector.',
+    header,
+    `Totals: ${loads.length} loads | revenue $${fmt(revenue)} | gross profit $${fmt(gp)} | margin ${pct(gp, revenue)} | on-time pickup ${onTime('onTimePickup')} | on-time delivery ${onTime('onTimeDelivery')}`,
+    topTable('Top customers', loads, l => l.customerName),
+    topTable('Top carriers', loads, l => l.carrierName),
+    topTable('Top lanes', loads, l => l.lane),
+    topTable('By broker', loads, l => l.broker),
+    topTable('By equipment', loads, l => l.equipmentType),
+  ].join('\n');
+}
+
+export default function AskClaude() {
+  const { loads, filters, viewMode } = useData();
+  const [open, setOpen] = useState(false);
+  const [question, setQuestion] = useState('');
+
+  const openInClaude = (text: string) => {
+    const q = text.trim();
+    if (!q) return;
+    const header = [
+      `Date range: ${filters.dateRange.start || 'any'} to ${filters.dateRange.end || 'any'}`,
+      `View: ${viewMode}`,
+      filters.team !== 'all' && `Team: ${filters.team}`,
+      filters.equipmentType !== 'all' && `Equipment: ${filters.equipmentType}`,
+      filters.search && `Search: "${filters.search}"`,
+    ].filter(Boolean).join(' | ');
+    const prompt = buildPrompt(q, loads, header);
+    const url = `https://claude.ai/new?q=${encodeURIComponent(prompt)}`;
+
+    // Copy first as a fallback in case the prefill is dropped; window.open stays synchronous to avoid popup blockers
+    void navigator.clipboard?.writeText(prompt).catch(() => undefined);
+    if (url.length <= MAX_URL_LENGTH) {
+      window.open(url, '_blank', 'noopener');
+      toast.success('Opened in Claude', { description: 'The question is also on your clipboard if it did not prefill.' });
+    } else {
+      window.open('https://claude.ai/new', '_blank', 'noopener');
+      toast.success('Question copied', { description: 'The snapshot is too long for a link. Paste it into Claude.' });
+    }
+    setQuestion('');
+    setOpen(false);
+  };
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="fixed bottom-6 right-6 z-40 flex items-center gap-2 rounded-full bg-primary px-4 py-3 text-sm font-medium text-primary-foreground shadow-lg transition-transform hover:scale-105"
+        >
+          <Sparkles className="w-4 h-4" />
+          Ask Claude
+        </button>
+      </PopoverTrigger>
+      <PopoverContent side="top" align="end" className="w-96 space-y-3">
+        <div>
+          <p className="text-sm font-medium">Ask Claude</p>
+          <p className="text-xs text-muted-foreground">
+            Opens claude.ai with a summary of the {loads.length.toLocaleString()} loads in your current filters.
+          </p>
+        </div>
+        <div className="space-y-1.5">
+          {SUGGESTIONS.map(s => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => openInClaude(s)}
+              className="block w-full rounded-md border px-3 py-1.5 text-left text-xs hover:bg-muted"
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+        <form className="space-y-2" onSubmit={e => { e.preventDefault(); openInClaude(question); }}>
+          <Textarea
+            value={question}
+            onChange={e => setQuestion(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); openInClaude(question); }
+            }}
+            placeholder="Or type your own question…"
+            rows={2}
+            className="resize-none text-sm"
+          />
+          <Button type="submit" size="sm" className="w-full" disabled={!question.trim()}>
+            <ExternalLink className="w-4 h-4 mr-2" />
+            Open in Claude
+          </Button>
+        </form>
+      </PopoverContent>
+    </Popover>
+  );
+}

@@ -1,9 +1,10 @@
 import { useData } from '@/context/DataContext';
 import { ViewType } from '@/types/loads';
-import { LayoutDashboard, Truck, MapPin, Users, AlertTriangle, Upload, Search, UserCheck, Building2, Lightbulb, Settings } from 'lucide-react';
+import { LayoutDashboard, Truck, MapPin, Users, AlertTriangle, Upload, Search, UserCheck, Building2, Lightbulb, Settings, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useRef } from 'react';
+import AskClaude from '@/components/AskClaude';
 
 const navItems: { id: ViewType; label: string; icon: React.ElementType }[] = [
   { id: 'dashboard', label: 'Executive Overview', icon: LayoutDashboard },
@@ -23,6 +24,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     teams, equipmentTypes, comparisonMode, setComparisonMode,
     timeframePreset, setTimeframePreset, viewMode, setViewMode,
     dataSource, dataLoading, dataError, refreshLoads, rawLoads, importBusy,
+    resetFilters, filtersActive,
   } = useData();
 
   const sourceLabel =
@@ -184,6 +186,16 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 {equipmentTypes.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
               </SelectContent>
             </Select>
+
+            <button
+              type="button"
+              onClick={resetFilters}
+              disabled={!filtersActive}
+              className="h-9 flex items-center gap-1.5 px-3 rounded-md border text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors disabled:opacity-40 disabled:pointer-events-none"
+            >
+              <X className="w-3.5 h-3.5" />
+              Clear filters
+            </button>
           </div>
         </header>
 
@@ -192,6 +204,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           {children}
         </div>
       </main>
+
+      <AskClaude />
     </div>
   );
 }

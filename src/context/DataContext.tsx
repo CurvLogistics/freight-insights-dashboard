@@ -38,6 +38,8 @@ interface DataContextType {
   dataError: string | null;
   lastSyncedAt: string | null;
   refreshLoads: () => Promise<void>;
+  resetFilters: () => void;
+  filtersActive: boolean;
 }
 
 const DataContext = createContext<DataContextType | null>(null);
@@ -81,6 +83,13 @@ function getPresetRange(preset: TimeframePreset, refDate: string): { start: stri
 const defaultEnd = new Date().toISOString().slice(0, 10);
 const defaultStart = new Date(Date.now() - 180 * 86400000).toISOString().slice(0, 10);
 
+const defaultFilters: Filters = {
+  dateRange: { start: defaultStart, end: defaultEnd },
+  team: 'all',
+  equipmentType: 'all',
+  search: '',
+};
+
 export function DataProvider({ children }: { children: React.ReactNode }) {
   const [rawLoads, setRawLoads] = useState<Load[]>([]);
   const [dataSource, setDataSource] = useState<DataSource>('none');  const [dataLoading, setDataLoading] = useState(true);
@@ -90,12 +99,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [comparisonMode, setComparisonMode] = useState<ComparisonMode>('prior');
   const [timeframePreset, setTimeframePresetState] = useState<TimeframePreset>('custom');
   const [viewMode, setViewMode] = useState<ViewMode>('booked');
-  const [filters, setFilters] = useState<Filters>({
-    dateRange: { start: defaultStart, end: defaultEnd },
-    team: 'all',
-    equipmentType: 'all',
-    search: '',
-  });
+  const [filters, setFilters] = useState<Filters>(defaultFilters);
   const importBusy = false; // CSV import is in-memory only now
 
 const refreshLoads = useCallback(async () => {
@@ -130,11 +134,24 @@ const refreshLoads = useCallback(async () => {
     }
   }, []);
 
+  const resetFilters = useCallback(() => {
+    setFilters(defaultFilters);
+    setTimeframePresetState('custom');
+    setComparisonMode('prior');
+    setViewMode('booked');
+  }, []);
+
+  const filtersActive =
+    filters.dateRange.start !== defaultStart || filters.dateRange.end !== defaultEnd ||
+    filters.team !== 'all' || filters.equipmentType !== 'all' || filters.search !== '' ||
+    timeframePreset !== 'custom' || comparisonMode !== 'prior' || viewMode !== 'booked';
+
   const teams = useMemo(() => [...new Set(rawLoads.map(l => l.team).filter(Boolean) as string[])], [rawLoads]);
   const equipmentTypes = useMemo(() => [...new Set(rawLoads.map(l => l.equipmentType).filter(Boolean) as string[])], [rawLoads]);
 
   const loads = useMemo(() => {
     let filtered = rawLoads;
+    filtered = filtered.filter(l => l.shipmentStatus !== 'Canceled' && l.shipmentStatus !== 'Draft');
     const { dateRange, team, equipmentType, search } = filters;
 
     if (team !== 'all') filtered = filtered.filter(l => l.team === team);
@@ -193,6 +210,7 @@ const refreshLoads = useCallback(async () => {
       timeframePreset, setTimeframePreset,
       viewMode, setViewMode,
       dataSource, dataLoading, dataError, lastSyncedAt, refreshLoads, importBusy,
+      resetFilters, filtersActive,
     }}>
       {children}
     </DataContext.Provider>
