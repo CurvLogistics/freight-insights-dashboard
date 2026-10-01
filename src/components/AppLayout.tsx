@@ -22,15 +22,14 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     currentView, setCurrentView, filters, setFilters, importCSV,
     teams, equipmentTypes, comparisonMode, setComparisonMode,
     timeframePreset, setTimeframePreset, viewMode, setViewMode,
-    dataSource, dataLoading, dataError, refreshFromSupabase, rawLoads, importBusy,
+    dataSource, dataLoading, dataError, refreshLoads, rawLoads, importBusy,
   } = useData();
 
   const sourceLabel =
-    dataLoading ? 'Loading…' :
-    importBusy ? `Saving Turvo export… ${rawLoads.length.toLocaleString()} loads` :
-    dataSource === 'supabase' ? `Supabase · ${rawLoads.length.toLocaleString()} loads` :
-    dataSource === 'csv' ? `CSV import · ${rawLoads.length.toLocaleString()} loads` :
-    `Sample export · ${rawLoads.length.toLocaleString()} loads`;
+  dataLoading ? 'Loading…' :
+  dataSource === 'turvo' ? `Turvo · ${rawLoads.length.toLocaleString()} loads` :
+  dataSource === 'csv' ? `CSV import · ${rawLoads.length.toLocaleString()} loads` :
+  `Sample export · ${rawLoads.length.toLocaleString()} loads`;
   const fileRef = useRef<HTMLInputElement>(null);
 
   const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -56,10 +55,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <p className="text-xs text-sidebar-foreground/50 mt-1">Logistics Intelligence</p>
           <button
             type="button"
-            title={dataError ?? 'Refresh from Supabase'}
-            onClick={() => void refreshFromSupabase()}
+            title={dataError ?? 'Refresh data'}
+           onClick={() => void refreshLoads()}
             className={`mt-2 w-full text-left text-[11px] leading-snug rounded px-2 py-1.5 transition-colors ${
-              dataSource === 'supabase'
+              dataSource === 'turvo'
                 ? 'bg-emerald-500/15 text-emerald-300'
                 : dataError
                   ? 'bg-amber-500/15 text-amber-200'

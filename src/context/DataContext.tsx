@@ -2,12 +2,12 @@ import React, { createContext, useContext, useState, useMemo, useCallback, useEf
 import { Load, ComputedLoad, DataQuality, ViewType } from '@/types/loads';
 import { computeLoad, computeDataQuality, parseCSV } from '@/lib/computeLoads';
 import { sampleLoads } from '@/data/sampleData';
-import { fetchLoadsFromSupabase, upsertLoadsToSupabase } from '@/lib/loadsRepository';
+import { fetchLoadsFromApi } from '@/lib/loadsRepository';
 
 export type ComparisonMode = 'prior' | 'yoy';
 export type TimeframePreset = 'rolling7' | 'rolling30' | 'mtd' | 'qtd' | 'ytd' | 'custom';
 export type ViewMode = 'booked' | 'locked';
-export type DataSource = 'supabase' | 'sample' | 'csv';
+export type DataSource = 'turvo' | 'sample' | 'csv';
 
 interface Filters {
   dateRange: { start: string; end: string };
@@ -37,7 +37,8 @@ interface DataContextType {
   dataSource: DataSource;
   dataLoading: boolean;
   dataError: string | null;
-  refreshFromSupabase: () => Promise<void>;
+  lastSyncedAt: string | null;
+  refreshLoads: () => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType | null>(null);
@@ -77,15 +78,16 @@ function getPresetRange(preset: TimeframePreset, refDate: string): { start: stri
   }
 }
 
-const defaultEnd = '2026-04-01';
+// End date = today, so newly synced loads are visible by default
+const defaultEnd = new Date().toISOString().slice(0, 10);
 const defaultStart = '2026-01-01';
 
 export function DataProvider({ children }: { children: React.ReactNode }) {
   const [rawLoads, setRawLoads] = useState<Load[]>(sampleLoads);
   const [dataSource, setDataSource] = useState<DataSource>('sample');
   const [dataLoading, setDataLoading] = useState(true);
-  const [importBusy, setImportBusy] = useState(false);
   const [dataError, setDataError] = useState<string | null>(null);
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const [currentView, setCurrentView] = useState<ViewType>('dashboard');
   const [comparisonMode, setComparisonMode] = useState<ComparisonMode>('prior');
   const [timeframePreset, setTimeframePresetState] = useState<TimeframePreset>('custom');
@@ -96,22 +98,24 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     equipmentType: 'all',
     search: '',
   });
+  const importBusy = false; // CSV import is in-memory only now
 
-  const refreshFromSupabase = useCallback(async () => {
+  const refreshLoads = useCallback(async () => {
     setDataLoading(true);
     setDataError(null);
     try {
-      const rows = await fetchLoadsFromSupabase();
-      if (rows.length > 0) {
-        setRawLoads(rows);
-        setDataSource('supabase');
-      } else {
-        setRawLoads(sampleLoads);
-        setDataSource('sample');
-        setDataError('Supabase loads table is empty — showing embedded Turvo export. Run npm run seed:loads after applying the migration.');
+      const { loads: apiLoads, lastSyncedAt: synced } = await fetchLoadsFromApi();
+      // Bundled export = history; Turvo API loads override by loadId
+      const byId = new Map(sampleLoads.map((l) => [l.loadId, l]));
+      apiLoads.forEach((l) => byId.set(l.loadId, l));
+      setRawLoads([...byId.values()]);
+      setDataSource(apiLoads.length > 0 ? 'turvo' : 'sample');
+      setLastSyncedAt(synced);
+      if (apiLoads.length === 0) {
+        setDataError('No Turvo loads synced yet. Showing the bundled export. Run a sync from Settings.');
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to load from Supabase';
+      const message = err instanceof Error ? err.message : 'Could not reach Turvo sync';
       setRawLoads(sampleLoads);
       setDataSource('sample');
       setDataError(message);
@@ -121,8 +125,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    void refreshFromSupabase();
-  }, [refreshFromSupabase]);
+    void refreshLoads();
+  }, [refreshLoads]);
 
   const setTimeframePreset = useCallback((preset: TimeframePreset) => {
     setTimeframePresetState(preset);
@@ -179,25 +183,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const importCSV = useCallback(async (text: string) => {
     const parsed = parseCSV(text);
     if (parsed.length === 0) {
-      setDataError('CSV parsed to 0 loads — check headers match Turvo export columns.');
+      setDataError('CSV parsed to 0 loads. Check that the headers match the Turvo export columns.');
       return;
     }
-
-    setImportBusy(true);
     setDataError(null);
-    // Show data immediately while we persist to Supabase
     setRawLoads(parsed);
     setDataSource('csv');
-
-    try {
-      await upsertLoadsToSupabase(parsed, 'turvo_export');
-      setDataSource('supabase');
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to save Turvo export to Supabase';
-      setDataError(`${message} — showing imported CSV in memory only.`);
-    } finally {
-      setImportBusy(false);
-    }
   }, []);
 
   return (
@@ -207,7 +198,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       comparisonMode, setComparisonMode,
       timeframePreset, setTimeframePreset,
       viewMode, setViewMode,
-      dataSource, dataLoading, dataError, refreshFromSupabase, importBusy,
+      dataSource, dataLoading, dataError, lastSyncedAt, refreshLoads, importBusy,
     }}>
       {children}
     </DataContext.Provider>
