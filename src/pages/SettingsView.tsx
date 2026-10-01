@@ -8,8 +8,8 @@ import { Loader2, AlertTriangle, RefreshCw, Download, Database } from 'lucide-re
 
 const sourceLabels = {
   turvo: 'Turvo (weekly API sync)',
-  sample: 'Bundled export (fallback)',
   csv: 'CSV import (this browser only)',
+  none: 'No data yet',
 } as const;
 
 function TurvoSyncCard() {

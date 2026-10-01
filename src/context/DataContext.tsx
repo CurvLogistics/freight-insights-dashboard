@@ -1,13 +1,12 @@
 import React, { createContext, useContext, useState, useMemo, useCallback, useEffect } from 'react';
 import { Load, ComputedLoad, DataQuality, ViewType } from '@/types/loads';
 import { computeLoad, computeDataQuality, parseCSV } from '@/lib/computeLoads';
-import { sampleLoads } from '@/data/sampleData';
 import { fetchLoadsFromApi } from '@/lib/loadsRepository';
 
 export type ComparisonMode = 'prior' | 'yoy';
 export type TimeframePreset = 'rolling7' | 'rolling30' | 'mtd' | 'qtd' | 'ytd' | 'custom';
 export type ViewMode = 'booked' | 'locked';
-export type DataSource = 'turvo' | 'sample' | 'csv';
+export type DataSource = 'turvo' | 'csv' | 'none';
 
 interface Filters {
   dateRange: { start: string; end: string };
@@ -80,12 +79,11 @@ function getPresetRange(preset: TimeframePreset, refDate: string): { start: stri
 
 // End date = today, so newly synced loads are visible by default
 const defaultEnd = new Date().toISOString().slice(0, 10);
-const defaultStart = '2026-01-01';
+const defaultStart = new Date(Date.now() - 180 * 86400000).toISOString().slice(0, 10);
 
 export function DataProvider({ children }: { children: React.ReactNode }) {
-  const [rawLoads, setRawLoads] = useState<Load[]>(sampleLoads);
-  const [dataSource, setDataSource] = useState<DataSource>('sample');
-  const [dataLoading, setDataLoading] = useState(true);
+  const [rawLoads, setRawLoads] = useState<Load[]>([]);
+  const [dataSource, setDataSource] = useState<DataSource>('none');  const [dataLoading, setDataLoading] = useState(true);
   const [dataError, setDataError] = useState<string | null>(null);
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const [currentView, setCurrentView] = useState<ViewType>('dashboard');
@@ -100,29 +98,25 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   });
   const importBusy = false; // CSV import is in-memory only now
 
-  const refreshLoads = useCallback(async () => {
-    setDataLoading(true);
-    setDataError(null);
-    try {
-      const { loads: apiLoads, lastSyncedAt: synced } = await fetchLoadsFromApi();
-      // Bundled export = history; Turvo API loads override by loadId
-      const byId = new Map(sampleLoads.map((l) => [l.loadId, l]));
-      apiLoads.forEach((l) => byId.set(l.loadId, l));
-      setRawLoads([...byId.values()]);
-      setDataSource(apiLoads.length > 0 ? 'turvo' : 'sample');
-      setLastSyncedAt(synced);
-      if (apiLoads.length === 0) {
-        setDataError('No Turvo loads synced yet. Showing the bundled export. Run a sync from Settings.');
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Could not reach Turvo sync';
-      setRawLoads(sampleLoads);
-      setDataSource('sample');
-      setDataError(message);
-    } finally {
-      setDataLoading(false);
+const refreshLoads = useCallback(async () => {
+  setDataLoading(true);
+  setDataError(null);
+  try {
+    const { loads: apiLoads, lastSyncedAt: synced } = await fetchLoadsFromApi();
+    setRawLoads(apiLoads);
+    setDataSource(apiLoads.length > 0 ? 'turvo' : 'none');
+    setLastSyncedAt(synced);
+    if (apiLoads.length === 0) {
+      setDataError('No Turvo loads synced yet. Run a sync from Settings.');
     }
-  }, []);
+  } catch (err) {
+    setRawLoads([]);
+    setDataSource('none');
+    setDataError(err instanceof Error ? err.message : 'Could not reach Turvo sync');
+  } finally {
+    setDataLoading(false);
+  }
+}, []);
 
   useEffect(() => {
     void refreshLoads();

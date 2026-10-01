@@ -29,7 +29,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   dataLoading ? 'Loading…' :
   dataSource === 'turvo' ? `Turvo · ${rawLoads.length.toLocaleString()} loads` :
   dataSource === 'csv' ? `CSV import · ${rawLoads.length.toLocaleString()} loads` :
-  `Sample export · ${rawLoads.length.toLocaleString()} loads`;
+  'No data, open Settings';
+
   const fileRef = useRef<HTMLInputElement>(null);
 
   const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
