@@ -1,6 +1,6 @@
-import { Load, ComputedLoad, DataQuality } from '@/types/loads';
+import { Load, ComputedLoad, DataQuality, OnTimeStatus } from '@/types/loads';
 
-const ON_TIME_TOLERANCE_MS = 60 * 60 * 1000; // 60 minutes
+const ON_TIME_TOLERANCE_MS = 60 * 60 * 1000; // 60 minutes (CSV fallback only)
 
 export function computeLoad(load: Load): ComputedLoad {
   const grossProfit = (load.revenue != null && load.carrierCost != null) ? load.revenue - load.carrierCost : undefined;
@@ -14,17 +14,25 @@ export function computeLoad(load: Load): ComputedLoad {
   const destSt = load.destinationState || '?';
   const stateLane = originSt !== '?' && destSt !== '?' ? `${originSt} → ${destSt}` : 'Unknown';
 
-  const onTimePickup = getOnTimeStatus(load.pickupDate, load.scheduledPickupDate);
-  const onTimeDelivery = getOnTimeStatus(load.deliveryDate, load.scheduledDeliveryDate);
+  // Prefer the service result from the Turvo sync (original vs. current appointment,
+  // customer reschedules excluded). Fall back to the old timestamp check for CSV imports.
+  const fromSync = load.serviceSource === 'turvo';
+  const onTimePickup: OnTimeStatus = fromSync && load.onTimePickup
+    ? load.onTimePickup
+    : getOnTimeStatus(load.pickupDate, load.scheduledPickupDate);
+  const onTimeDelivery: OnTimeStatus = fromSync && load.onTimeDelivery
+    ? load.onTimeDelivery
+    : getOnTimeStatus(load.deliveryDate, load.scheduledDeliveryDate);
+  const hiddenLate = fromSync && load.onTimeDeliveryTurvo === 'On Time' && onTimeDelivery === 'Late';
 
   const statusLower = (load.shipmentStatus || '').toLowerCase();
   const isLocked = load.readyToBillDate || statusLower === 'ready for billing' || statusLower === 'completed';
   const simpleStatus: 'Booked' | 'Locked' = isLocked ? 'Locked' : 'Booked';
 
-  return { ...load, grossProfit, marginPercent, lane, stateLane, onTimePickup, onTimeDelivery, simpleStatus };
+  return { ...load, grossProfit, marginPercent, lane, stateLane, onTimePickup, onTimeDelivery, hiddenLate, simpleStatus };
 }
 
-function getOnTimeStatus(actual?: string, scheduled?: string): 'On Time' | 'Late' | 'Unknown' {
+function getOnTimeStatus(actual?: string, scheduled?: string): OnTimeStatus {
   if (!actual || !scheduled) return 'Unknown';
   const actualMs = new Date(actual).getTime();
   const scheduledMs = new Date(scheduled).getTime();
@@ -103,6 +111,7 @@ export function parseCSV(text: string): Load[] {
       }
     });
     if (!load.loadId) load.loadId = `AUTO-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+    load.serviceSource = 'csv';
     return load as Load;
   });
 }
