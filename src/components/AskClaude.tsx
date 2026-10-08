@@ -109,7 +109,7 @@ export default function AskClaude() {
         <div>
           <p className="text-sm font-medium">Ask Claude</p>
           <p className="text-xs text-muted-foreground">
-            Opens claude.ai with a summary of the {loads.length.toLocaleString()} loads in your current filters.
+            Opens claude.ai with a summary of the {loads.length.toLocaleString('en-US')} loads in your current filters.
           </p>
         </div>
         <div className="space-y-1.5">

@@ -5,18 +5,19 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Search, AlertTriangle, TrendingDown, ArrowUpDown, ArrowUp, ArrowDown, MapPin, Filter, ChevronDown, ChevronRight, Truck, Info } from 'lucide-react';
-import { computeLoad } from '@/lib/computeLoads';
+import { computeLoad, isActiveLoad } from '@/lib/computeLoads';
+import { getComparisonWindow } from '@/lib/comparison';
 import InfoTip from '@/components/InfoTip';
 import { DataTrustBadge } from '@/components/DataTrust';
 import { ComputedLoad, Load } from '@/types/loads';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 
-const fmt = (n?: number | null) => n != null ? `$${Math.round(n).toLocaleString()}` : '—';
+const DAY_MS = 24 * 60 * 60 * 1000;
+const fmt = (n?: number | null) => n != null ? `$${Math.round(n).toLocaleString('en-US')}` : '—';
 const pct = (n?: number | null) => n != null ? `${n.toFixed(1)}%` : '—';
-const fmtDeltaCurrency = (n?: number | null) => n != null ? `${n > 0 ? '+' : n < 0 ? '-' : ''}$${Math.abs(Math.round(n)).toLocaleString()}` : '—';
+const fmtDeltaCurrency = (n?: number | null) => n != null ? `${n > 0 ? '+' : n < 0 ? '-' : ''}$${Math.abs(Math.round(n)).toLocaleString('en-US')}` : '—';
 const fmtDeltaNumber = (n?: number | null) => n != null ? `${n > 0 ? '+' : ''}${Math.round(n)}` : '—';
 const fmtDeltaPct = (n?: number | null, suffix = '%') => n != null ? `${n > 0 ? '+' : ''}${n.toFixed(1)}${suffix}` : '—';
-const DAY_MS = 24 * 60 * 60 * 1000;
 const shortDateFormatter = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
 
 type LaneLevel = 'city' | 'state';
@@ -121,10 +122,6 @@ function parseDateOnly(value?: string): number | null {
   return Date.UTC(year, month - 1, day);
 }
 
-function formatDateOnly(value: number): string {
-  return new Date(value).toISOString().slice(0, 10);
-}
-
 function formatShortDate(value?: string | null): string {
   const parsed = parseDateOnly(value);
   return parsed != null ? shortDateFormatter.format(parsed) : '—';
@@ -150,29 +147,6 @@ function toTitleCase(value?: string): string {
 
 function getShipmentDate(load: Pick<Load, 'pickupDate' | 'deliveryDate'>): string {
   return (load.pickupDate || load.deliveryDate || '').slice(0, 10);
-}
-
-function shiftDateByYears(date: string, years: number): string {
-  const parsed = parseDateOnly(date);
-  if (parsed == null) return '';
-  const dt = new Date(parsed);
-  return formatDateOnly(Date.UTC(dt.getUTCFullYear() + years, dt.getUTCMonth(), dt.getUTCDate()));
-}
-
-function getComparisonRange(
-  dateRange: { start: string; end: string },
-  comparisonMode: 'prior' | 'yoy'
-): { start: string; end: string } | null {
-  const startMs = parseDateOnly(dateRange.start);
-  const endMs = parseDateOnly(dateRange.end);
-  if (startMs == null || endMs == null || endMs < startMs) return null;
-  if (comparisonMode === 'yoy') {
-    return { start: shiftDateByYears(dateRange.start, -1), end: shiftDateByYears(dateRange.end, -1) };
-  }
-  const windowDays = Math.round((endMs - startMs) / DAY_MS) + 1;
-  const priorEndMs = startMs - DAY_MS;
-  const priorStartMs = priorEndMs - (windowDays - 1) * DAY_MS;
-  return { start: formatDateOnly(priorStartMs), end: formatDateOnly(priorEndMs) };
 }
 
 function matchesGlobalSearch(load: Load, search: string): boolean {
@@ -401,12 +375,14 @@ export default function LanesView() {
   const [ctSortKey, setCtSortKey] = useState<CtSortKey>('costDeltaPct');
   const [ctSortDir, setCtSortDir] = useState<SortDir>('desc');
 
-  const priorRange = useMemo(() => getComparisonRange(filters.dateRange, comparisonMode), [filters.dateRange, comparisonMode]);
+  const compWindow = useMemo(() => getComparisonWindow(filters.dateRange, comparisonMode, rawLoads), [filters.dateRange, comparisonMode, rawLoads]);
+  // Only compare against a window we actually have data for (see lib/comparison.ts)
+  const priorRange = compWindow.covered ? compWindow.range : null;
 
   const prevLoads = useMemo(() => {
     if (!priorRange) return [];
     return rawLoads
-      .filter((load) => matchesPriorFilters(load, filters, priorRange))
+      .filter((load) => isActiveLoad(load) && matchesPriorFilters(load, filters, priorRange))
       .map(computeLoad)
       .filter((load) => viewMode === 'booked' || load.simpleStatus === 'Locked');
   }, [rawLoads, filters, priorRange, viewMode]);
@@ -478,37 +454,61 @@ export default function LanesView() {
   }, [loads, prevLoads, level]);
 
   // ─── Typeahead suggestions ───
-  const originSuggestions = useMemo(() => {
-    const set = new Map<string, string>();
+  // Built from BOTH ends of every lane in the current filters (same loads the lookup searches).
+  // Before, the origin box only knew origin cities, so typing "Bronx" (a destination-only
+  // city) in Origin showed nothing while it worked in Destination.
+  type Suggestion = { label: string; key: string; asOrigin: number; asDest: number };
+  const locationIndex = useMemo(() => {
+    const m = new Map<string, Suggestion>();
+    const add = (city: string | undefined, st: string | undefined, side: 'asOrigin' | 'asDest') => {
+      const c = toTitleCase(city);
+      const state = normalizeState(st);
+      if (!c || !state) return;
+      const key = `${normalizeToken(city)}|${state}`;
+      const e = m.get(key) ?? { label: `${c}, ${state}`, key, asOrigin: 0, asDest: 0 };
+      e[side]++;
+      m.set(key, e);
+    };
     loads.forEach(l => {
-      const city = toTitleCase(l.originCity);
-      const state = normalizeState(l.originState);
-      if (city && state) set.set(`${normalizeToken(l.originCity)}|${state}`, `${city}, ${state}`);
+      add(l.originCity, l.originState, 'asOrigin');
+      add(l.destinationCity, l.destinationState, 'asDest');
     });
-    return [...set.values()].sort();
+    return [...m.values()];
   }, [loads]);
 
-  const destSuggestions = useMemo(() => {
-    const set = new Map<string, string>();
-    loads.forEach(l => {
-      const city = toTitleCase(l.destinationCity);
-      const state = normalizeState(l.destinationState);
-      if (city && state) set.set(`${normalizeToken(l.destinationCity)}|${state}`, `${city}, ${state}`);
+  const [openSuggest, setOpenSuggest] = useState<'origin' | 'dest' | null>(null);
+
+  const suggestFor = (input: string, side: 'origin' | 'dest') => {
+    const term = input.trim().toLowerCase();
+    if (!term) return [];
+    const own = side === 'origin' ? 'asOrigin' : 'asDest';
+    return locationIndex
+      .filter(s => s.label.toLowerCase().includes(term) && s.label.toLowerCase() !== term)
+      // starts-with first, then cities that actually appear on this side, then by volume
+      .sort((a, b) =>
+        Number(b.label.toLowerCase().startsWith(term)) - Number(a.label.toLowerCase().startsWith(term)) ||
+        Number(b[own] > 0) - Number(a[own] > 0) ||
+        (b.asOrigin + b.asDest) - (a.asOrigin + a.asDest))
+      .slice(0, 8);
+  };
+  const filteredOriginSuggestions = useMemo(() => suggestFor(originInput, 'origin'), [originInput, locationIndex]); // eslint-disable-line react-hooks/exhaustive-deps
+  const filteredDestSuggestions = useMemo(() => suggestFor(destInput, 'dest'), [destInput, locationIndex]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** "Bronx, NY only appears as a destination" style hint when the typed place never ships from/to that side. */
+  const wrongSideHint = (input: string, side: 'origin' | 'dest') => {
+    const loc = parseLocationInput(input);
+    if (!loc.city) return null;
+    const matches = locationIndex.filter(s => {
+      const [city, st] = s.key.split('|');
+      return city === loc.city && (!loc.state || st === loc.state);
     });
-    return [...set.values()].sort();
-  }, [loads]);
-
-  const filteredOriginSuggestions = useMemo(() => {
-    if (!originInput.trim()) return [];
-    const term = originInput.toLowerCase();
-    return originSuggestions.filter(s => s.toLowerCase().includes(term)).slice(0, 8);
-  }, [originInput, originSuggestions]);
-
-  const filteredDestSuggestions = useMemo(() => {
-    if (!destInput.trim()) return [];
-    const term = destInput.toLowerCase();
-    return destSuggestions.filter(s => s.toLowerCase().includes(term)).slice(0, 8);
-  }, [destInput, destSuggestions]);
+    if (matches.length === 0) return null;
+    const own = matches.reduce((n, s) => n + (side === 'origin' ? s.asOrigin : s.asDest), 0);
+    const other = matches.reduce((n, s) => n + (side === 'origin' ? s.asDest : s.asOrigin), 0);
+    return own === 0 && other > 0 ? { label: matches[0].label, other } : null;
+  };
+  const originHint = useMemo(() => wrongSideHint(originInput, 'origin'), [originInput, locationIndex]); // eslint-disable-line react-hooks/exhaustive-deps
+  const destHint = useMemo(() => wrongSideHint(destInput, 'dest'), [destInput, locationIndex]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── Lookup results (the core comp engine) ───
   const lookupResults = useMemo((): { sections: { label: string; color: string; items: CompResult[] }[]; hasExact: boolean; message: string | null; warnings: string[] } | null => {
@@ -995,7 +995,15 @@ export default function LanesView() {
         </Select>
       </div>
 
+      {!compWindow.covered && compWindow.reason && (
+        <div className="flex items-start gap-2 text-xs text-muted-foreground bg-muted/50 border rounded-md px-3 py-2">
+          <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+          <span>Prior columns are empty: {compWindow.reason}</span>
+        </div>
+      )}
+
       {/* 1. Lane Lookup */}
+
       <Card>
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between flex-wrap gap-2">
@@ -1029,49 +1037,43 @@ export default function LanesView() {
         <CardContent>
           <div className="grid grid-cols-2 gap-3 mb-4">
             {/* Origin input */}
-            <div className="relative">
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Origin</label>
-              <div className="relative">
-                <MapPin className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                <Input
-                  placeholder="City, ST or State (e.g. Nogales, AZ or Texas)"
-                  value={originInput}
-                  onChange={e => setOriginInput(e.target.value)}
-                  className="pl-8 h-9 text-sm"
-                />
-              </div>
-              {filteredOriginSuggestions.length > 0 && (
-                <div className="absolute z-50 top-full mt-1 w-full bg-popover border rounded-md shadow-md max-h-48 overflow-y-auto">
-                  {filteredOriginSuggestions.map(s => (
-                    <button key={s} className="w-full text-left text-xs px-3 py-1.5 hover:bg-accent" onClick={() => setOriginInput(s)}>
-                      {s}
-                    </button>
-                  ))}
-                </div>
+           <LocationInput
+              label="Origin"
+              placeholder="City, ST or State (e.g. Nogales, AZ or Texas)"
+              value={originInput}
+              onChange={setOriginInput}
+              open={openSuggest === 'origin'}
+              onOpenChange={o => setOpenSuggest(o ? 'origin' : null)}
+              suggestions={filteredOriginSuggestions}
+              side="origin"
+              hint={originHint && (
+                <>
+                  {originHint.label} only shows up as a <b>destination</b> ({originHint.other} loads).{' '}
+                  <button className="underline" onClick={() => { setDestInput(originHint.label); setOriginInput(destInput); }}>
+                    Search it as destination
+                  </button>
+                </>
               )}
-            </div>
+            />
             {/* Destination input */}
-            <div className="relative">
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Destination</label>
-              <div className="relative">
-                <MapPin className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                <Input
-                  placeholder="City, ST or State (e.g. Bronx, NY or Florida)"
-                  value={destInput}
-                  onChange={e => setDestInput(e.target.value)}
-                  className="pl-8 h-9 text-sm"
-                />
-              </div>
-              {filteredDestSuggestions.length > 0 && (
-                <div className="absolute z-50 top-full mt-1 w-full bg-popover border rounded-md shadow-md max-h-48 overflow-y-auto">
-                  {filteredDestSuggestions.map(s => (
-                    <button key={s} className="w-full text-left text-xs px-3 py-1.5 hover:bg-accent" onClick={() => setDestInput(s)}>
-                      {s}
-                    </button>
-                  ))}
-                </div>
+            <LocationInput
+              label="Destination"
+              placeholder="City, ST or State (e.g. Bronx, NY or Florida)"
+              value={destInput}
+              onChange={setDestInput}
+              open={openSuggest === 'dest'}
+              onOpenChange={o => setOpenSuggest(o ? 'dest' : null)}
+              suggestions={filteredDestSuggestions}
+              side="dest"
+              hint={destHint && (
+                <>
+                  {destHint.label} only shows up as an <b>origin</b> ({destHint.other} loads).{' '}
+                  <button className="underline" onClick={() => { setOriginInput(destHint.label); setDestInput(originInput); }}>
+                    Search it as origin
+                  </button>
+                </>
               )}
-            </div>
+            />
           </div>
 
           {lookupResults ? (
@@ -1196,7 +1198,7 @@ export default function LanesView() {
                       <Input
                         placeholder="—"
                         className="h-6 w-20 text-xs font-mono text-right inline-block"
-                        value={datRates[r.lane] != null ? `$${Math.round(datRates[r.lane]).toLocaleString()}` : ''}
+                        value={datRates[r.lane] != null ? `$${Math.round(datRates[r.lane]).toLocaleString('en-US')}` : ''}
                         onChange={e => setDatRate(r.lane, e.target.value)}
                       />
                     </td>
@@ -1367,6 +1369,70 @@ export default function LanesView() {
           )}
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+function LocationInput({
+  label, placeholder, value, onChange, open, onOpenChange, suggestions, side, hint,
+}: {
+  label: string;
+  placeholder: string;
+  value: string;
+  onChange: (v: string) => void;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  suggestions: { label: string; asOrigin: number; asDest: number }[];
+  side: 'origin' | 'dest';
+  hint?: React.ReactNode;
+}) {
+  const [active, setActive] = useState(0);
+  const pick = (v: string) => { onChange(v); onOpenChange(false); };
+  return (
+    <div className="relative">
+      <label className="text-xs font-medium text-muted-foreground mb-1 block">{label}</label>
+      <div className="relative">
+        <MapPin className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+        <Input
+          placeholder={placeholder}
+          value={value}
+          onChange={e => { onChange(e.target.value); onOpenChange(true); setActive(0); }}
+          onFocus={() => onOpenChange(true)}
+          // delay so a click on a suggestion lands before the list closes
+          onBlur={() => setTimeout(() => onOpenChange(false), 150)}
+          onKeyDown={e => {
+            if (!open || suggestions.length === 0) return;
+            if (e.key === 'ArrowDown') { e.preventDefault(); setActive(i => Math.min(i + 1, suggestions.length - 1)); }
+            if (e.key === 'ArrowUp') { e.preventDefault(); setActive(i => Math.max(i - 1, 0)); }
+            if (e.key === 'Enter') { e.preventDefault(); pick(suggestions[active].label); }
+            if (e.key === 'Escape') onOpenChange(false);
+          }}
+          className="pl-8 h-9 text-sm"
+          autoComplete="off"
+        />
+      </div>
+      {open && suggestions.length > 0 && (
+        <div className="absolute z-50 top-full mt-1 w-full bg-popover border rounded-md shadow-md max-h-56 overflow-y-auto">
+          {suggestions.map((s, i) => {
+            const onThisSide = side === 'origin' ? s.asOrigin : s.asDest;
+            return (
+              <button
+                key={s.label}
+                type="button"
+                onMouseDown={e => e.preventDefault()}
+                onClick={() => pick(s.label)}
+                className={`w-full flex items-center justify-between gap-2 text-left text-xs px-3 py-1.5 hover:bg-muted ${i === active ? "bg-muted" : ""}`}
+              >
+                <span>{s.label}</span>
+                <span className="text-[10px] text-muted-foreground">
+                  {onThisSide > 0 ? `${onThisSide} loads` : side === 'origin' ? 'destination only' : 'origin only'}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {hint && <p className="text-[11px] text-warning mt-1">{hint}</p>}
     </div>
   );
 }

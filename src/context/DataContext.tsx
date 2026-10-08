@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useMemo, useCallback, useEffect } from 'react';
 import { Load, ComputedLoad, DataQuality, ViewType } from '@/types/loads';
-import { computeLoad, computeDataQuality, parseCSV } from '@/lib/computeLoads';
+import { computeLoad, computeDataQuality, parseCSV, isActiveLoad } from '@/lib/computeLoads';
 import { fetchLoadsFromApi } from '@/lib/loadsRepository';
 
 export type ComparisonMode = 'prior' | 'yoy';
@@ -151,7 +151,7 @@ const refreshLoads = useCallback(async () => {
 
   const loads = useMemo(() => {
     let filtered = rawLoads;
-    filtered = filtered.filter(l => l.shipmentStatus !== 'Canceled' && l.shipmentStatus !== 'Draft');
+    filtered = filtered.filter(isActiveLoad);
     const { dateRange, team, equipmentType, search } = filters;
 
     if (team !== 'all') filtered = filtered.filter(l => l.team === team);

@@ -3,7 +3,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import InfoTip from '@/components/InfoTip';
 import { DataTrustBadge } from '@/components/DataTrust';
 
-const fmt = (n?: number) => n != null ? `$${n.toLocaleString()}` : '—';
+const fmt = (n?: number) => n != null ? `$${n.toLocaleString('en-US')}` : '—';
 
 export default function ProductivityView() {
   const { loads } = useData();

@@ -40,8 +40,30 @@ function getOnTimeStatus(actual?: string, scheduled?: string): OnTimeStatus {
   return actualMs <= scheduledMs + ON_TIME_TOLERANCE_MS ? 'On Time' : 'Late';
 }
 
-export function computeDataQuality(loads: Load[]): DataQuality {
+/** Canceled and draft loads never have revenue/cost and are excluded from every metric. */
+export function isActiveLoad(l: Pick<Load, 'shipmentStatus'>): boolean {
+  return l.shipmentStatus !== 'Canceled' && l.shipmentStatus !== 'Draft';
+}
+
+export type DataQualityIssue = 'missingRevenue' | 'missingCarrierCost' | 'missingPickup' | 'missingDelivery';
+
+export const DATA_QUALITY_CHECKS: Record<DataQualityIssue, { label: string; match: (l: Load) => boolean; fix: string }> = {
+  missingRevenue:     { label: 'Missing Revenue',  match: l => l.revenue == null,     fix: 'Add the customer rate in Turvo (Financials → Receivables).' },
+  missingCarrierCost: { label: 'Missing Cost',     match: l => l.carrierCost == null, fix: 'Add the carrier rate in Turvo (Financials → Payables).' },
+  missingPickup:      { label: 'Missing Pickup',   match: l => !l.pickupDate,         fix: 'Add the pickup appointment or arrival in Turvo.' },
+  missingDelivery:    { label: 'Missing Delivery', match: l => !l.deliveryDate,       fix: 'Add the delivery appointment or arrival in Turvo.' },
+};
+
+/** Loads behind a data-quality number (same population as computeDataQuality). */
+export function getDataQualityLoads(loads: Load[], issue: DataQualityIssue): Load[] {
+  return loads.filter(isActiveLoad).filter(DATA_QUALITY_CHECKS[issue].match);
+}
+
+export function computeDataQuality(allLoads: Load[]): DataQuality {
+  // Canceled/draft loads used to count as "missing revenue" (7 of the 8 flagged loads were canceled).
+  const loads = allLoads.filter(isActiveLoad);
   const total = loads.length;
+
   return {
     totalLoads: total,
     missingRevenue: loads.filter(l => l.revenue == null).length,
@@ -53,8 +75,31 @@ export function computeDataQuality(loads: Load[]): DataQuality {
   };
 }
 
+const DATE_FIELDS = new Set<keyof Load>(['pickupDate', 'deliveryDate', 'scheduledPickupDate', 'scheduledDeliveryDate', 'readyToBillDate', 'invoiceSentDate']);
+
+/**
+ * Turvo CSV exports use US dates ("09/14/2025 08:00"); the app compares ISO strings
+ * ("2025-09-14"), so convert on import. Already-ISO values pass through.
+ */
+function normalizeCsvDate(val: string): string | undefined {
+  if (/^\d{4}-\d{2}-\d{2}/.test(val)) return val;
+  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{2,4})(?:[ T](\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)?)?/i.exec(val);
+  if (!m) {
+    const t = Date.parse(val); // e.g. "Sep 14, 2025"
+    return Number.isNaN(t) ? undefined : new Date(t).toISOString().slice(0, 10);
+  }
+  const year = m[3].length === 2 ? 2000 + Number(m[3]) : Number(m[3]);
+  const p2 = (n: number | string) => String(n).padStart(2, '0');
+  const date = `${year}-${p2(m[1])}-${p2(m[2])}`;
+  if (!m[4]) return date;
+  let hour = Number(m[4]);
+  if (m[6]) hour = (hour % 12) + (m[6].toUpperCase() === 'PM' ? 12 : 0);
+  return `${date}T${p2(hour)}:${m[5]}:00`;
+}
+
 export function parseCSV(text: string): Load[] {
-  const lines = text.trim().split('\n');
+  const lines = text.trim().split(/\r?\n/);
+
   if (lines.length < 2) return [];
   const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/[\s/]+/g, '_'));
 
@@ -105,7 +150,10 @@ export function parseCSV(text: string): Load[] {
         }
       } else if (field === 'revenue' || field === 'carrierCost') {
         const num = parseFloat(val.replace(/[$,]/g, ''));
-        if (!isNaN(num)) (load as any)[field] = num;
+      if (!isNaN(num)) (load as any)[field] = num;
+      } else if (DATE_FIELDS.has(field!)) {
+        const iso = normalizeCsvDate(val);
+        if (iso) (load as any)[field!] = iso;
       } else {
         (load as any)[field!] = val;
       }

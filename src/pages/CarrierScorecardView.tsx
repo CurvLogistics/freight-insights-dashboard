@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Search, ArrowUpDown, ArrowUp, ArrowDown, Filter, FileText, Eye, EyeOff, AlertTriangle } from 'lucide-react';
 import { ComputedLoad } from '@/types/loads';
 import { DataTrustBadge, DataWarnings } from '@/components/DataTrust';
+import { formatUSDate } from '@/lib/dates';
 
 /* ── Weekly trend helpers ── */
 const REF_DATE = new Date('2026-04-02');
@@ -70,12 +71,12 @@ function computeWeeklyTrend(shipDates: string[]): WeeklyTrend {
   return { weeks, consistency, dropOff };
 }
 
-const fmt = (n?: number | null) => n != null ? `$${Math.round(n).toLocaleString()}` : '—';
+const fmt = (n?: number | null) => n != null ? `$${Math.round(n).toLocaleString('en-US')}` : '—';
 const pct = (n?: number | null) => n != null ? `${n.toFixed(1)}%` : '—';
 const fmtDelta = (n?: number | null) => {
   if (n == null) return '—';
   const sign = n > 0 ? '+' : n < 0 ? '-' : '';
-  return `${sign}$${Math.abs(Math.round(n)).toLocaleString()}`;
+  return `${sign}$${Math.abs(Math.round(n)).toLocaleString('en-US')}`;
 };
 const fmtDeltaPct = (n?: number | null) => {
   if (n == null) return '—';
@@ -379,7 +380,7 @@ export default function CarrierScorecardView() {
           <DataTrustBadge level="partial" tooltip="OTP/OTD requires timestamp data. Cost vs Market compares against historical loads on similar lanes." />
         </div>
         <p className="text-muted-foreground text-sm mt-1">
-          {totals.carriers} carriers · {totals.loads.toLocaleString()} loads
+          {totals.carriers} carriers · {totals.loads.toLocaleString('en-US')} loads
           {regionFilter !== 'all' && <span className="ml-1 text-primary">· {regionFilter} region</span>}
         </p>
       </div>
@@ -408,7 +409,7 @@ export default function CarrierScorecardView() {
 
       {/* KPI Bar */}
       <div className={`grid grid-cols-2 gap-3 ${shareView ? 'md:grid-cols-4' : 'md:grid-cols-6'}`}>
-        <KPICard label="Total Loads" value={totals.loads.toLocaleString()} />
+        <KPICard label="Total Loads" value={totals.loads.toLocaleString('en-US')} />
         <KPICard label="Total Spend" value={fmt(totals.cost)} emphasis />
         {!shareView && <KPICard label="Total Revenue" value={fmt(totals.revenue)} />}
         <KPICard label="Avg Cost / Load" value={fmt(totals.avgCost)} />
@@ -564,7 +565,7 @@ function ShareableDetail({ c }: { c: CarrierRow }) {
 
       {/* Overview */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        <MiniCard label="Total Loads" value={c.loads.toLocaleString()} />
+        <MiniCard label="Total Loads" value={c.loads.toLocaleString('en-US')} />
         <MiniCard label="Total Spend" value={fmt(c.cost)} emphasis />
         <MiniCard label="Avg Cost / Load" value={fmt(c.avgCost)} />
         <MiniCard label="Active Lanes" value={c.activeLanes.toString()} />
@@ -661,7 +662,7 @@ function InternalDetail({ c, handleLaneSort, laneSortKey, laneSortDir, regionLan
               const h = maxWeekLoads > 0 ? (w.loads / maxWeekLoads) * 100 : 0;
               const isRecent = i >= wt.weeks.length - 2;
               return (
-                <div key={w.weekStart} className="flex-1 flex flex-col items-center gap-1" title={`Week of ${w.weekStart}: ${w.loads} loads`}>
+                <div key={w.weekStart} className="flex-1 flex flex-col items-center gap-1" title={`Week of ${formatUSDate(w.weekStart)}: ${w.loads} loads`}>
                   <span className="text-[9px] font-mono text-muted-foreground">{w.loads || ''}</span>
                   <div
                     className={`w-full rounded-sm transition-all ${w.loads === 0 ? 'bg-muted/30' : isRecent && wt.dropOff ? 'bg-destructive/60' : 'bg-primary/60'}`}

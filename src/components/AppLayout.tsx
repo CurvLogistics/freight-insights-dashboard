@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useRef } from 'react';
 import AskClaude from '@/components/AskClaude';
+import DateInputUS from '@/components/DateInputUS';
 
 const navItems: { id: ViewType; label: string; icon: React.ElementType }[] = [
   { id: 'dashboard', label: 'Executive Overview', icon: LayoutDashboard },
@@ -29,8 +30,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   const sourceLabel =
   dataLoading ? 'Loading…' :
-  dataSource === 'turvo' ? `Turvo · ${rawLoads.length.toLocaleString()} loads` :
-  dataSource === 'csv' ? `CSV import · ${rawLoads.length.toLocaleString()} loads` :
+  dataSource === 'turvo' ? `Turvo · ${rawLoads.length.toLocaleString('en-US')} loads` :
+  dataSource === 'csv' ? `CSV import · ${rawLoads.length.toLocaleString('en-US')} loads` :
   'No data, open Settings';
 
   const fileRef = useRef<HTMLInputElement>(null);
@@ -131,24 +132,22 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             </Select>
 
             {/* Custom date range (always visible for reference, editable when custom) */}
-            <Input
-              type="date"
+                    <DateInputUS
               value={filters.dateRange.start}
-              onChange={e => {
-                setTimeframePreset('custom' as any);
-                setFilters(f => ({ ...f, dateRange: { ...f.dateRange, start: e.target.value } }));
+              onChange={iso => {
+                setTimeframePreset('custom');
+                setFilters(f => ({ ...f, dateRange: { ...f.dateRange, start: iso } }));
               }}
-              className="h-9 w-36 text-xs"
+              className="w-36"
             />
             <span className="text-muted-foreground text-xs">to</span>
-            <Input
-              type="date"
+            <DateInputUS
               value={filters.dateRange.end}
-              onChange={e => {
-                setTimeframePreset('custom' as any);
-                setFilters(f => ({ ...f, dateRange: { ...f.dateRange, end: e.target.value } }));
+              onChange={iso => {
+                setTimeframePreset('custom');
+                setFilters(f => ({ ...f, dateRange: { ...f.dateRange, end: iso } }));
               }}
-              className="h-9 w-36 text-xs"
+              className="w-36"
             />
 
             {/* Compare Mode */}

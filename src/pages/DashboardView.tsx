@@ -9,15 +9,18 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import InteractiveRankTable from '@/components/InteractiveRankTable';
 import ComparisonRankTable, { ComparisonRow } from '@/components/ComparisonRankTable';
 import BusinessIntelligence from '@/components/BusinessIntelligence';
-import { computeLoad } from '@/lib/computeLoads';
+import { computeLoad, isActiveLoad, DATA_QUALITY_CHECKS, getDataQualityLoads, type DataQualityIssue } from '@/lib/computeLoads';
+import LoadListDrawer from '@/components/LoadListDrawer';
+import { getComparisonWindow, inRange } from '@/lib/comparison';
+import { formatUSShortDate } from '@/lib/dates';
 
-const fmt = (n?: number) => n != null ? `$${Math.round(n).toLocaleString()}` : '—';
+const fmt = (n?: number) => n != null ? `$${Math.round(n).toLocaleString('en-US')}` : '—';
 const pct = (n?: number) => n != null ? `${n.toFixed(1)}%` : '—';
 const fmtCompact = (n: number) => {
   const abs = Math.abs(n);
   if (abs >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
   if (abs >= 1_000) return `$${(n / 1_000).toFixed(0)}K`;
-  return `$${Math.round(n).toLocaleString()}`;
+  return `$${Math.round(n).toLocaleString('en-US')}`;
 };
 
 export default function DashboardView() {
@@ -40,52 +43,23 @@ export default function DashboardView() {
   const avgMargin = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
 
   // Dataset date boundaries
-  const datasetBounds = useMemo(() => {
-    let min = 'zzzz', max = '';
-    rawLoads.forEach(l => {
-      const d = (l.pickupDate || l.deliveryDate)?.slice(0, 10);
-      if (!d) return;
-      if (d < min) min = d;
-      if (d > max) max = d;
-    });
-    return { min, max };
-  }, [rawLoads]);
+  // Comparison window (prior period or same period last year) + whether we have data for it
+  const compWindow = useMemo(
+    () => getComparisonWindow(filters.dateRange, comparisonMode, rawLoads),
+    [filters.dateRange, comparisonMode, rawLoads],
+  );
 
-  // Compute prev period date range
-  const prevDateRange = useMemo(() => {
-    const { start, end } = filters.dateRange;
-    if (!start || !end) return null;
-
-    let prevStart: string, prevEnd: string;
-    if (comparisonMode === 'yoy') {
-      const s = new Date(start); const e = new Date(end);
-      s.setFullYear(s.getFullYear() - 1); e.setFullYear(e.getFullYear() - 1);
-      prevStart = s.toISOString().slice(0, 10); prevEnd = e.toISOString().slice(0, 10);
-    } else {
-      const startMs = new Date(start).getTime();
-      const endMs = new Date(end).getTime();
-      const dur = endMs - startMs;
-      if (dur <= 0) return null;
-      prevStart = new Date(startMs - dur).toISOString().slice(0, 10);
-      prevEnd = start;
-    }
-
-    if (prevEnd <= datasetBounds.min || prevStart >= datasetBounds.max) return null;
-    if (prevStart < datasetBounds.min) prevStart = datasetBounds.min;
-    return { prevStart, prevEnd };
-  }, [filters.dateRange, comparisonMode, datasetBounds]);
-
-  // Prev period loads (computed, filtered same as current)
+  // Prev period loads (computed, filtered same as current). Empty when the window isn't fully synced.
   const prevLoads = useMemo(() => {
-    if (!prevDateRange) return [];
+    if (!compWindow.covered || !compWindow.range) return [];
+    const range = compWindow.range;
     return rawLoads.filter(l => {
+      if (!isActiveLoad(l)) return false;
       if (filters.team !== 'all' && l.team !== filters.team) return false;
       if (filters.equipmentType !== 'all' && l.equipmentType !== filters.equipmentType) return false;
-      const d = (l.pickupDate || l.deliveryDate)?.slice(0, 10);
-      if (!d) return false;
-      return d >= prevDateRange.prevStart && d < prevDateRange.prevEnd;
+      return inRange(l, range);
     }).map(computeLoad).filter(l => viewMode === 'booked' || l.simpleStatus === 'Locked');
-  }, [rawLoads, prevDateRange, filters.team, filters.equipmentType, viewMode]);
+  }, [rawLoads, compWindow, filters.team, filters.equipmentType, viewMode]);
 
   // Comparison period KPI metrics
   const prevPeriodMetrics = useMemo(() => {
@@ -174,7 +148,7 @@ export default function DashboardView() {
     entry.profit += (l.grossProfit || 0);
     trendMap.set(d, entry);
   });
-  const trendData = [...trendMap.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([date, v]) => ({ date: date.slice(5), ...v }));
+  const trendData = [...trendMap.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([date, v]) => ({ date: formatUSShortDate(date), ...v }));
 
   // Team breakdown
   const teamMap = new Map<string, { loads: number; revenue: number; profit: number }>();
@@ -217,12 +191,12 @@ export default function DashboardView() {
   }, []);
 
   const dq = dataQuality;
-  const qualityItems = [
-    { label: 'Missing Revenue', value: dq.missingRevenue, pct: dq.totalLoads ? (dq.missingRevenue / dq.totalLoads * 100) : 0 },
-    { label: 'Missing Cost', value: dq.missingCarrierCost, pct: dq.totalLoads ? (dq.missingCarrierCost / dq.totalLoads * 100) : 0 },
-    { label: 'Missing Pickup', value: dq.missingPickup, pct: dq.totalLoads ? (dq.missingPickup / dq.totalLoads * 100) : 0 },
-    { label: 'Missing Delivery', value: dq.missingDelivery, pct: dq.totalLoads ? (dq.missingDelivery / dq.totalLoads * 100) : 0 },
-  ];
+   const qualityItems = (Object.keys(DATA_QUALITY_CHECKS) as DataQualityIssue[]).map(key => {
+    const value = dq[key];
+    return { key, label: DATA_QUALITY_CHECKS[key].label, value, pct: dq.totalLoads ? (value / dq.totalLoads) * 100 : 0 };
+  });
+  const [dqIssue, setDqIssue] = useState<DataQualityIssue | null>(null);
+  const dqLoads = useMemo(() => (dqIssue ? getDataQualityLoads(rawLoads, dqIssue) : []), [rawLoads, dqIssue]);
 
   const compLabel = comparisonMode === 'yoy' ? 'YoY' : 'Prior Period';
 
@@ -259,6 +233,13 @@ export default function DashboardView() {
         )}
       </div>
 
+      {!compWindow.covered && compWindow.reason && (
+        <div className="flex items-start gap-2 text-xs text-muted-foreground bg-muted/50 border rounded-md px-3 py-2">
+          <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0 text-warning" />
+          <span>No {compLabel} comparison: {compWindow.reason}</span>
+        </div>
+      )}
+
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <KPICard title="Total Loads in Dataset" value={rawLoads.length.toString()} icon={Package} color="primary" />
@@ -279,19 +260,26 @@ export default function DashboardView() {
         <CardHeader className="pb-3">
           <CardTitle className="text-sm font-medium flex items-center gap-2">
             <AlertCircle className="w-4 h-4 text-warning" />
-            Data Quality
+                   Data Quality
+            <InfoTip text="Canceled and draft loads are excluded. Click a number to see the loads and fix them in Turvo." />
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            {qualityItems.map(q => (
-              <div key={q.label} className="text-center">
-                <div className={`text-2xl font-bold font-mono ${q.pct > 20 ? 'text-destructive' : q.pct > 0 ? 'text-warning' : 'text-success'}`}>
-                  {q.pct.toFixed(0)}%
+                      {qualityItems.map(q => (
+              <button
+                key={q.key}
+                type="button"
+                onClick={() => setDqIssue(q.key)}
+                title={q.value > 0 ? `Show the ${q.value} loads` : 'All loads complete'}
+                className="text-center rounded-lg p-2 hover:bg-muted/60 transition-colors"
+              >
+                <div className={`text-2xl font-bold font-mono ${q.pct > 20 ? 'text-destructive' : q.value > 0 ? 'text-warning' : 'text-success'}`}>
+                  {q.value > 0 && q.pct < 1 ? '<1' : q.pct.toFixed(0)}%
                 </div>
                 <div className="text-xs text-muted-foreground mt-1">{q.label}</div>
-                <div className="text-xs text-muted-foreground">{q.value} of {dq.totalLoads}</div>
-              </div>
+                <div className={`text-xs ${q.value > 0 ? 'text-primary underline underline-offset-2' : 'text-muted-foreground'}`}>{q.value} of {dq.totalLoads}</div>
+              </button>
             ))}
           </div>
         </CardContent>
@@ -355,7 +343,17 @@ export default function DashboardView() {
 
       <InteractiveRankTable title="Top Customers by Profit" data={qualifiedCust} defaultSort="profit" defaultDir="desc" onRowClick={handleRowClick('customer')} selectedRow={dashFilter?.type === 'customer' ? dashFilter.value : null} />
 
+      <LoadListDrawer
+        open={dqIssue != null}
+        onOpenChange={o => { if (!o) setDqIssue(null); }}
+        title={dqIssue ? DATA_QUALITY_CHECKS[dqIssue].label : ''}
+        description={dqIssue ? `${DATA_QUALITY_CHECKS[dqIssue].fix} Fixed loads drop off after the next Turvo sync.` : undefined}
+        loads={dqLoads}
+        highlightMissingFinancials
+      />
+
       {/* Business Intelligence Layer */}
+
       <BusinessIntelligence />
     </div>
   );

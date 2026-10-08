@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { ArrowUpDown, ArrowUp, ArrowDown, Search, X, AlertTriangle, TrendingDown, UserMinus } from 'lucide-react';
 
-const fmt = (n: number) => `$${Math.round(n).toLocaleString()}`;
+const fmt = (n: number) => `$${Math.round(n).toLocaleString('en-US')}`;
 const pct = (n: number) => `${n.toFixed(1)}%`;
 
 export interface ComparisonRow {

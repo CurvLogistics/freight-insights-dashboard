@@ -4,14 +4,16 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Activity, TrendingDown, Target, AlertTriangle } from 'lucide-react';
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '@/components/ui/table';
 import { Load } from '@/types/loads';
+import { isActiveLoad } from '@/lib/computeLoads';
+import { getComparisonWindow, inRange } from '@/lib/comparison';
 
-const fmt = (n: number) => `$${Math.round(n).toLocaleString()}`;
+const fmt = (n: number) => `$${Math.round(n).toLocaleString('en-US')}`;
 const pct = (n: number) => `${n.toFixed(1)}%`;
 const fmtCompact = (n: number) => {
   const abs = Math.abs(n);
   if (abs >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
   if (abs >= 1_000) return `$${(n / 1_000).toFixed(0)}K`;
-  return `$${Math.round(n).toLocaleString()}`;
+  return `$${Math.round(n).toLocaleString('en-US')}`;
 };
 const delta = (cur: number, prev: number) => {
   if (prev === 0) return { abs: cur, pct: 0, label: 'N/A' };
@@ -42,25 +44,7 @@ function aggregatePeriod(loads: Load[]): PeriodAgg {
   return { loads, totalLoads: loads.length, revenue, cost, profit, margin, avgCost };
 }
 
-function getPrevDateRange(
-  start: string, end: string, mode: string, dataMin: string, dataMax: string
-): { prevStart: string; prevEnd: string } | null {
-  let prevStart: string, prevEnd: string;
-  if (mode === 'yoy') {
-    const s = new Date(start); const e = new Date(end);
-    s.setFullYear(s.getFullYear() - 1); e.setFullYear(e.getFullYear() - 1);
-    prevStart = s.toISOString().slice(0, 10); prevEnd = e.toISOString().slice(0, 10);
-  } else {
-    // Prior period: same-length window
-    const dur = new Date(end).getTime() - new Date(start).getTime();
-    if (dur <= 0) return null;
-    prevStart = new Date(new Date(start).getTime() - dur).toISOString().slice(0, 10);
-    prevEnd = start;
-  }
-  if (prevEnd <= dataMin || prevStart >= dataMax) return null;
-  if (prevStart < dataMin) prevStart = dataMin;
-  return { prevStart, prevEnd };
-}
+
 
 interface LaneComparison {
   name: string;
@@ -90,18 +74,10 @@ export default function BusinessIntelligence() {
     const { start, end } = filters.dateRange;
     if (!start || !end) return null;
 
-    let dataMin = 'zzzz', dataMax = '';
-    rawLoads.forEach(l => {
-      const d = (l.pickupDate || l.deliveryDate)?.slice(0, 10);
-      if (!d) return;
-      if (d < dataMin) dataMin = d;
-      if (d > dataMax) dataMax = d;
-    });
-
     const filterBase = (l: Load) => {
       if (filters.team !== 'all' && l.team !== filters.team) return false;
       if (filters.equipmentType !== 'all' && l.equipmentType !== filters.equipmentType) return false;
-      return true;
+      return isActiveLoad(l);
     };
     const curLoads = rawLoads.filter(l => {
       if (!filterBase(l)) return false;
@@ -110,13 +86,10 @@ export default function BusinessIntelligence() {
       return d >= start && d <= end;
     });
 
-    const prev = getPrevDateRange(start, end, comparisonMode, dataMin, dataMax);
-    const prevLoads = prev ? rawLoads.filter(l => {
-      if (!filterBase(l)) return false;
-      const d = (l.pickupDate || l.deliveryDate)?.slice(0, 10);
-      if (!d) return false;
-      return d >= prev.prevStart && d < prev.prevEnd;
-    }) : [];
+    const comp = getComparisonWindow(filters.dateRange, comparisonMode, rawLoads);
+    const prevLoads = comp.covered && comp.range
+      ? rawLoads.filter(l => filterBase(l) && inRange(l, comp.range!))
+      : [];
 
     const cur = aggregatePeriod(curLoads);
     const prv = aggregatePeriod(prevLoads);

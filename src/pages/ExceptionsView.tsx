@@ -3,6 +3,7 @@ import { useData } from '@/context/DataContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { formatUSDate } from '@/lib/dates';
 
 export default function ExceptionsView() {
   const { loads } = useData();
@@ -71,8 +72,8 @@ export default function ExceptionsView() {
                       <tr key={l.loadId} className={`border-b border-border/50 ${i % 2 === 1 ? 'bg-muted/15' : ''}`}>
                         <td className="py-2 px-3 font-mono text-xs">{l.loadId}</td>
                         <td className="py-2 px-3">{l.customerName || '—'}</td>
-                        <td className="py-2 px-3 text-right font-mono">{l.revenue != null ? `$${Math.round(l.revenue).toLocaleString()}` : '—'}</td>
-                        <td className="py-2 px-3 text-xs">{l.readyToBillDate}</td>
+                        <td className="py-2 px-3 text-right font-mono">{l.revenue != null ? `$${Math.round(l.revenue).toLocaleString('en-US')}` : '—'}</td>
+                        <td className="py-2 px-3 text-xs">{formatUSDate(l.readyToBillDate)}</td>
                         <td className="py-2 px-3 text-right font-mono text-warning">{days}</td>
                       </tr>
                     );

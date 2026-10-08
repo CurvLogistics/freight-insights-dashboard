@@ -5,14 +5,17 @@ import { Badge } from '@/components/ui/badge';
 import InfoTip from '@/components/InfoTip';
 import { DataTrustBadge, DataWarnings } from '@/components/DataTrust';
 import type { ComputedLoad } from '@/types/loads';
+import LoadListDrawer from '@/components/LoadListDrawer';
 
-type StatusFilter = 'all' | 'late' | 'hidden' | 'customer' | 'shipper' | 'late-pickup' | 'unknown';
+type StatusFilter = 'all' | 'on-time' | 'late' | 'hidden' | 'customer' | 'shipper' | 'on-time-pickup' | 'late-pickup' | 'unknown';
 type GroupBy = 'broker' | 'team' | 'customer' | 'carrier';
 
 const STATUS_FILTERS: { key: StatusFilter; label: string; match: (l: ComputedLoad) => boolean }[] = [
   { key: 'all', label: 'All shipments', match: () => true },
+  { key: 'on-time', label: 'On-time delivery', match: l => l.onTimeDelivery === 'On Time' },
   { key: 'late', label: 'Late delivery', match: l => l.onTimeDelivery === 'Late' },
   { key: 'hidden', label: 'Hidden late', match: l => l.hiddenLate },
+  { key: 'on-time-pickup', label: 'On-time pickup', match: l => l.onTimePickup === 'On Time' },
   { key: 'late-pickup', label: 'Late pickup', match: l => l.onTimePickup === 'Late' },
   { key: 'customer', label: 'Customer reschedule', match: l => l.rescheduleReason === 'customer' },
   { key: 'shipper', label: 'Shipper delay', match: l => l.rescheduleReason === 'shipper_delay' },
@@ -32,6 +35,17 @@ export default function ServiceView() {
   const [groupBy, setGroupBy] = useState<GroupBy>('broker');
   const [group, setGroup] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
+  const [drawer, setDrawer] = useState<StatusFilter | null>(null);
+
+  // Clicking a KPI card opens the shipments behind it (with the accounts involved),
+  // and also sets the table below to the same filter.
+  const openList = (key: StatusFilter) => { setStatus(key); setDrawer(key); };
+  const drawerDef = STATUS_FILTERS.find(f => f.key === drawer);
+  const drawerLoads = useMemo(
+    () => (drawerDef ? loads.filter(drawerDef.match).filter(l => !group || groupValue(l, groupBy) === group) : []),
+    [loads, drawerDef, group, groupBy],
+  );
+
 
   const synced = loads.filter(l => l.serviceSource === 'turvo').length;
   const usingNewRules = loads.length > 0 && synced / loads.length >= 0.9;
@@ -102,13 +116,13 @@ export default function ServiceView() {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
-        <MetricCard label="Total Shipments" value={kpi.total.toLocaleString()} sub="In current filters" tone="neutral" onClick={() => setStatus('all')} />
-        <MetricCard label="On-Time Pickup" value={fmtPct(kpi.puPct)} sub={`${kpi.puLate} late pickups`} tone={kpi.puPct != null && kpi.puPct >= 90 ? 'good' : 'warn'} onClick={() => setStatus('late-pickup')} />
-        <MetricCard label="On-Time Delivery" value={fmtPct(kpi.delPct)} sub={kpi.turvoPct != null ? `Turvo shows ${fmtPct(kpi.turvoPct)}` : `${kpi.delKnown} scored`} tone={kpi.delPct != null && kpi.delPct >= 90 ? 'good' : 'warn'} onClick={() => setStatus('all')} />
-        <MetricCard label="Late Shipments" value={kpi.late.toString()} sub="Late at delivery" tone={kpi.late === 0 ? 'good' : 'bad'} onClick={() => setStatus('late')} />
-        <MetricCard label="Hidden Late" value={kpi.hidden.toString()} sub="On time in Turvo, date moved" tone={kpi.hidden === 0 ? 'good' : 'bad'} onClick={() => setStatus('hidden')} />
-        <MetricCard label="Customer Reschedules" value={kpi.customer.toString()} sub={`+${kpi.shipper} shipper delays · not late`} tone="neutral" onClick={() => setStatus('customer')} />
-        <MetricCard label="Can't Score" value={kpi.unknown.toString()} sub="Missing arrival time" tone={kpi.unknown === 0 ? 'good' : 'warn'} onClick={() => setStatus('unknown')} />
+        <MetricCard label="Total Shipments" value={kpi.total.toLocaleString('en-US')} sub="In current filters" tone="neutral" onClick={() => openList('all')} />
+        <MetricCard label="On-Time Pickup" value={fmtPct(kpi.puPct)} sub={`${kpi.puLate} late pickups`} tone={kpi.puPct != null && kpi.puPct >= 90 ? 'good' : 'warn'} onClick={() => openList('on-time-pickup')} secondary={{ label: `${kpi.puLate} late`, onClick: () => openList('late-pickup') }} />
+        <MetricCard label="On-Time Delivery" value={fmtPct(kpi.delPct)} sub={kpi.turvoPct != null ? `Turvo shows ${fmtPct(kpi.turvoPct)}` : `${kpi.delKnown} scored`} tone={kpi.delPct != null && kpi.delPct >= 90 ? 'good' : 'warn'} onClick={() => openList('on-time')} secondary={{ label: `${kpi.late} late`, onClick: () => openList('late') }} />
+        <MetricCard label="Late Shipments" value={kpi.late.toString()} sub="Late at delivery" tone={kpi.late === 0 ? 'good' : 'bad'} onClick={() => openList('late')} />
+        <MetricCard label="Hidden Late" value={kpi.hidden.toString()} sub="On time in Turvo, date moved" tone={kpi.hidden === 0 ? 'good' : 'bad'} onClick={() => openList('hidden')} />
+        <MetricCard label="Customer Reschedules" value={kpi.customer.toString()} sub={`+${kpi.shipper} shipper delays · not late`} tone="neutral" onClick={() => openList('customer')} />
+        <MetricCard label="Can't Score" value={kpi.unknown.toString()} sub="Missing arrival time" tone={kpi.unknown === 0 ? 'good' : 'warn'} onClick={() => openList('unknown')} />
       </div>
 
       <Card>
@@ -206,6 +220,20 @@ export default function ServiceView() {
           )}
         </CardContent>
       </Card>
+
+      <LoadListDrawer
+        open={drawer != null}
+        onOpenChange={o => { if (!o) setDrawer(null); }}
+        title={`${drawerDef?.label ?? ''}${group ? ` · ${group}` : ''}`}
+        description="Shipments in the current filters. Click an account to narrow the list."
+        loads={drawerLoads}
+        extraColumns={[
+          { label: 'Pickup', render: l => <StatusBadge status={(l as ComputedLoad).onTimePickup} />, csv: l => (l as ComputedLoad).onTimePickup },
+          { label: 'Delivery', render: l => <StatusBadge status={(l as ComputedLoad).onTimeDelivery} hidden={(l as ComputedLoad).hiddenLate} />, csv: l => (l as ComputedLoad).onTimeDelivery },
+          { label: 'Date moved', render: l => <MovedCell load={l as ComputedLoad} /> },
+          { label: 'Late by', align: 'right', render: l => (l.minutesLate ? formatDuration(l.minutesLate) : '—'), csv: l => l.minutesLate },
+        ]}
+      />
     </div>
   );
 }
@@ -226,7 +254,12 @@ function Chips({ options, value, onChange }: { options: { key: string; label: st
   );
 }
 
-function MetricCard({ label, value, sub, tone, onClick }: { label: string; value: string; sub: string; tone: 'good' | 'warn' | 'bad' | 'neutral'; onClick?: () => void }) {
+function MetricCard({ label, value, sub, tone, onClick, secondary }: {
+  label: string; value: string; sub: string; tone: 'good' | 'warn' | 'bad' | 'neutral';
+  onClick?: () => void;
+  /** Optional second link inside the card, e.g. "12 late" on an on-time card. */
+  secondary?: { label: string; onClick: () => void };
+}) {
   const color = tone === 'good' ? 'text-success' : tone === 'warn' ? 'text-warning' : tone === 'bad' ? 'text-destructive' : 'text-foreground';
   return (
     <Card className={onClick ? 'cursor-pointer hover:border-primary/50 transition-colors' : ''} onClick={onClick}>
@@ -234,6 +267,15 @@ function MetricCard({ label, value, sub, tone, onClick }: { label: string; value
         <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wide">{label}</p>
         <p className={`text-2xl font-bold mt-1.5 font-mono ${color}`}>{value}</p>
         <p className="text-[11px] text-muted-foreground mt-1">{sub}</p>
+        {secondary && (
+          <button
+            type="button"
+            onClick={e => { e.stopPropagation(); secondary.onClick(); }}
+            className="text-[11px] text-destructive underline underline-offset-2 mt-0.5"
+          >
+            View {secondary.label}
+          </button>
+        )}
       </CardContent>
     </Card>
   );

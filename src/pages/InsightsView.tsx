@@ -1,28 +1,18 @@
 import { useMemo } from 'react';
 import { useData } from '@/context/DataContext';
-import { computeLoad } from '@/lib/computeLoads';
+import { computeLoad, isActiveLoad } from '@/lib/computeLoads';
+import { getComparisonWindow, inRange } from '@/lib/comparison';
+import { formatUSDate } from '@/lib/dates';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { AlertTriangle, TrendingUp, Target, Eye, Info, CircleAlert } from 'lucide-react';
 import InfoTip from '@/components/InfoTip';
 import { DataTrustBadge, DataWarnings } from '@/components/DataTrust';
 
-const fmt = (n: number) => n >= 1_000_000 ? `$${(n / 1_000_000).toFixed(2)}M` : n >= 1_000 ? `$${(n / 1_000).toFixed(0)}K` : `$${n.toLocaleString()}`;
-const signed = (n: number) => n >= 0 ? `+${n.toLocaleString()}` : n.toLocaleString();
+const fmt = (n: number) => n >= 1_000_000 ? `$${(n / 1_000_000).toFixed(2)}M` : n >= 1_000 ? `$${(n / 1_000).toFixed(0)}K` : `$${n.toLocaleString('en-US')}`;
+const signed = (n: number) => n >= 0 ? `+${n.toLocaleString('en-US')}` : n.toLocaleString('en-US');
 const signedFmt = (n: number) => n >= 0 ? `+${fmt(Math.abs(n))}` : `-${fmt(Math.abs(n))}`;
 
-function getComparisonRange(start: string, end: string, mode: string) {
-  const s = new Date(start), e = new Date(end);
-  const days = Math.round((e.getTime() - s.getTime()) / 86400000);
-  if (mode === 'yoy') {
-    const ps = new Date(s); ps.setFullYear(ps.getFullYear() - 1);
-    const pe = new Date(e); pe.setFullYear(pe.getFullYear() - 1);
-    return { prevStart: ps.toISOString().slice(0, 10), prevEnd: pe.toISOString().slice(0, 10) };
-  }
-  const pe = new Date(s); pe.setDate(pe.getDate() - 1);
-  const ps = new Date(pe); ps.setDate(ps.getDate() - days);
-  return { prevStart: ps.toISOString().slice(0, 10), prevEnd: pe.toISOString().slice(0, 10) };
-}
 
 /** Title-case a lane, strip state codes: "SANTA MARIA, CA → CHICAGO, IL" → "Santa Maria → Chicago" */
 function cleanLane(lane: string) {
@@ -54,21 +44,21 @@ export default function InsightsView() {
     const { dateRange } = filters;
     const curLoads = loads;
 
-    const comp = getComparisonRange(dateRange.start, dateRange.end, comparisonMode);
-    let prevFiltered = rawLoads;
+    const comp = getComparisonWindow(dateRange, comparisonMode, rawLoads);
+    const hasComp = comp.covered && !!comp.range;
+    const vsLabel = comparisonMode === 'yoy' ? 'vs last year' : 'vs prior period';
+    let prevFiltered = hasComp ? rawLoads.filter(isActiveLoad) : [];
     if (filters.team !== 'all') prevFiltered = prevFiltered.filter(l => l.team === filters.team);
     if (filters.equipmentType !== 'all') prevFiltered = prevFiltered.filter(l => l.equipmentType === filters.equipmentType);
     if (filters.search) {
       const s = filters.search.toLowerCase();
       prevFiltered = prevFiltered.filter(l =>
-        l.loadId?.toLowerCase().includes(s) || l.customerName?.toLowerCase().includes(s) ||
-        l.carrierName?.toLowerCase().includes(s) || l.broker?.toLowerCase().includes(s)
+        [l.loadId, l.customerName, l.carrierName, l.broker, l.originCity, l.originState, l.destinationCity, l.destinationState]
+          .some(v => v?.toLowerCase().includes(s))
       );
     }
-    prevFiltered = prevFiltered.filter(l => {
-      const d = (l.pickupDate || l.deliveryDate || '').slice(0, 10);
-      return d >= comp.prevStart && d <= comp.prevEnd;
-    });
+    if (hasComp) prevFiltered = prevFiltered.filter(l => inRange(l, comp.range!));
+
     let prevLoads = prevFiltered.map(computeLoad);
     if (viewMode === 'locked') prevLoads = prevLoads.filter(l => l.simpleStatus === 'Locked');
 
@@ -122,19 +112,25 @@ export default function InsightsView() {
       const avgPrevCost = d.prevLoads > 0 ? d.prevCost / d.prevLoads : 0;
       return { lane: cleanLane(lane), curMargin: curM, prevMargin: prevM, marginDelta: curM - prevM, curLoads: d.curLoads, costDelta: avgCurCost - avgPrevCost, hasPrev: d.prevLoads > 0 };
     });
-    const compressed = lanes.filter(l => l.marginDelta < -2 && l.curLoads > 0).sort((a, b) => a.marginDelta - b.marginDelta).slice(0, 2);
+        const compressed = lanes.filter(l => l.hasPrev && l.marginDelta < -2 && l.curLoads > 0)
+.sort((a, b) => a.marginDelta - b.marginDelta).slice(0, 2);
     const costRisers = lanes.filter(l => l.curLoads > 0 && l.hasPrev && l.costDelta > 0).sort((a, b) => b.costDelta - a.costDelta).slice(0, 2);
 
     // Biggest Issue — single sentence, max 12 words
     let biggestIssue = '';
-    if (dMargin < -1 && compressed.length > 0) {
+    if (!hasComp) {
+      biggestIssue = topCusts.length > 0
+        ? `No ${comparisonMode === 'yoy' ? 'last-year' : 'prior-period'} data to compare — showing current period only`
+        : 'No loads in the selected period';
+    } else if (dMargin < -1 && compressed.length > 0) {
       biggestIssue = `Margin down ${Math.abs(dMargin).toFixed(1)}pp driven by ${compressed[0].lane}`;
     } else if (dProfit < 0 && dLoads > 0) {
       biggestIssue = 'More loads but less profit — pricing or cost issue';
     } else if (dProfit < 0) {
-      biggestIssue = `Profit down ${fmt(Math.abs(dProfit))} vs prior period`;
+      biggestIssue = `Profit down ${fmt(Math.abs(dProfit))} ${vsLabel}`;
     } else if (dLoads < 0) {
-      biggestIssue = `Volume down ${Math.abs(dLoads)} loads vs prior`;
+      biggestIssue = `Volume down ${Math.abs(dLoads)} loads ${vsLabel}`;
+
     } else if (costRisers.length > 0) {
       biggestIssue = `Carrier costs rising on ${costRisers[0].lane}`;
     } else {
@@ -143,12 +139,13 @@ export default function InsightsView() {
 
     // What Changed — short, signal-focused
     const highlights: string[] = [];
-    if (dLoads > 0 && dProfit < 0) highlights.push('Loads up, but profit down');
+    if (!hasComp) { /* no comparative highlights without comparison data */ }
+    else if (dLoads > 0 && dProfit < 0) highlights.push('Loads up, but profit down');
     else if (dLoads > 0 && dRev <= 0) highlights.push('Volume up, revenue flat');
     else if (dLoads > 0) highlights.push(`Loads up ${signed(dLoads)}`);
     else if (dLoads < 0) highlights.push(`Volume down ${Math.abs(dLoads)} loads`);
 
-    if (Math.abs(dMargin) >= 1) highlights.push(`Margin ${dMargin > 0 ? 'up' : 'down'} ${Math.abs(dMargin).toFixed(1)}pp vs prior`);
+    if (hasComp && Math.abs(dMargin) >= 1) highlights.push(`Margin ${dMargin > 0 ? 'up' : 'down'} ${Math.abs(dMargin).toFixed(1)}pp ${vsLabel}`);
     if (compressed.length > 0) highlights.push(`Compression on ${compressed.map(c => c.lane).join(', ')}`);
     if (costRisers.length > 0) highlights.push(`Cost pressure on ${costRisers.map(c => c.lane).join(', ')}`);
     if (topCusts.length >= 2) {
@@ -168,10 +165,11 @@ export default function InsightsView() {
     const warnings: string[] = [];
     const missingCount = curLoads.filter(l => !l.revenue || !l.carrierCost).length;
     if (missingCount > 0) warnings.push(`${missingCount} loads missing revenue or cost`);
-    if (prevCount === 0) warnings.push('No comparison data for prior period');
+        if (!hasComp && comp.reason) warnings.push(comp.reason);
+    else if (prevCount === 0) warnings.push(`No loads in the comparison period (${formatUSDate(comp.range?.start)}–${formatUSDate(comp.range?.end)})`);
     warnings.push('Service metrics limited — missing appointment data');
 
-    return { curCount, curRev, curProfit, curMargin, dLoads, dRev, dProfit, dMargin, biggestIssue, highlights, actions, warnings };
+    return { curCount, curRev, curProfit, curMargin, dLoads, dRev, dProfit, dMargin, biggestIssue, highlights, actions, warnings, hasComp };
   }, [loads, rawLoads, filters, comparisonMode, viewMode]);
 
   const presetLabels: Record<string, string> = { rolling7: 'Rolling 7', rolling30: 'Rolling 30', mtd: 'MTD', qtd: 'QTD', ytd: 'YTD', custom: 'Custom' };
@@ -180,7 +178,7 @@ export default function InsightsView() {
   if (filters.team !== 'all') ctx.push(filters.team);
   if (filters.equipmentType !== 'all') ctx.push(filters.equipmentType);
 
-  const Delta = ({ val, display }: { val: number; display: string }) => (
+    const Delta = ({ val, display }: { val: number; display: string }) => !insights.hasComp ? null : (
     <span className={val < 0 ? 'text-destructive' : 'text-green-600 dark:text-green-400'}>({display})</span>
   );
 
@@ -213,7 +211,7 @@ export default function InsightsView() {
         <CardContent className="px-4 pb-4 space-y-1 text-sm font-mono">
           <div className="flex justify-between">
             <span className="text-muted-foreground">Loads</span>
-            <span>{insights.curCount.toLocaleString()} <Delta val={insights.dLoads} display={signed(insights.dLoads)} /></span>
+            <span>{insights.curCount.toLocaleString('en-US')} <Delta val={insights.dLoads} display={signed(insights.dLoads)} /></span>
           </div>
           <div className="flex justify-between">
             <span className="text-muted-foreground">Revenue</span>

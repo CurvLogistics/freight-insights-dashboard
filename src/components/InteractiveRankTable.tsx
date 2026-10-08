@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { ArrowUpDown, ArrowUp, ArrowDown, Search, X } from 'lucide-react';
 
-const fmt = (n?: number) => n != null ? `$${Math.round(n).toLocaleString()}` : '—';
+const fmt = (n?: number) => n != null ? `$${Math.round(n).toLocaleString('en-US')}` : '—';
 const pct = (n?: number) => n != null ? `${n.toFixed(1)}%` : '—';
 
 export interface RankRow {

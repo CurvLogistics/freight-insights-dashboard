@@ -8,7 +8,7 @@ import { Search, ArrowUpDown, ArrowUp, ArrowDown, Filter, AlertTriangle, Eye, Ey
 import { ComputedLoad } from '@/types/loads';
 import { DataTrustBadge, DataWarnings } from '@/components/DataTrust';
 
-const fmt = (n?: number | null) => n != null ? `$${Math.round(n).toLocaleString()}` : '—';
+const fmt = (n?: number | null) => n != null ? `$${Math.round(n).toLocaleString('en-US')}` : '—';
 const pct = (n?: number | null) => n != null ? `${n.toFixed(1)}%` : '—';
 
 const STATE_REGIONS: Record<string, string> = {
@@ -260,7 +260,7 @@ export default function CustomerScorecardView() {
           <DataTrustBadge level="partial" tooltip="Financials depend on complete revenue and cost data. Service metrics require timestamps." />
         </div>
         <p className="text-muted-foreground text-sm mt-1">
-          {totals.customers} customers · {totals.loads.toLocaleString()} loads
+          {totals.customers} customers · {totals.loads.toLocaleString('en-US')} loads
           {regionFilter !== 'all' && <span className="ml-1 text-primary">· {regionFilter} region</span>}
         </p>
       </div>
@@ -283,7 +283,7 @@ export default function CustomerScorecardView() {
 
       {/* KPI Bar */}
       <div className={`grid grid-cols-2 ${shareView ? 'md:grid-cols-4' : 'md:grid-cols-6'} gap-3`}>
-        <KPICard label="Total Loads" value={totals.loads.toLocaleString()} />
+        <KPICard label="Total Loads" value={totals.loads.toLocaleString('en-US')} />
         <KPICard label="Total Revenue" value={fmt(totals.revenue)} />
         {!shareView && <KPICard label="Total Spend" value={fmt(totals.cost)} />}
         {!shareView && <KPICard label="Total Profit" value={fmt(totals.profit)} good={totals.profit > 0} />}
@@ -443,7 +443,7 @@ function ShareableDetail({ c, handleLaneSort, laneSortKey, laneSortDir }: {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        <MiniCard label="Total Loads" value={c.loads.toLocaleString()} />
+        <MiniCard label="Total Loads" value={c.loads.toLocaleString('en-US')} />
         <MiniCard label="Total Revenue" value={fmt(c.revenue)} emphasis />
         <MiniCard label="Avg Rev / Load" value={fmt(c.avgRevLoad)} />
         <MiniCard label="Active Lanes" value={c.activeLanes.toString()} />
@@ -498,7 +498,7 @@ function ExpandedDetail({ c, handleLaneSort, laneSortKey, laneSortDir }: {
     <div className="space-y-4">
       {/* Financial summary */}
       <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
-        <MiniCard label="Total Loads" value={c.loads.toLocaleString()} />
+        <MiniCard label="Total Loads" value={c.loads.toLocaleString('en-US')} />
         <MiniCard label="Revenue" value={fmt(c.revenue)} emphasis />
         <MiniCard label="Total Spend" value={fmt(c.cost)} />
         <MiniCard label="Profit" value={fmt(c.profit)} good={c.profit > 0} />
