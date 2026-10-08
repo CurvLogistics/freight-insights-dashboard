@@ -95,8 +95,32 @@ interface HistoricalShipment {
   carrier: string;
   revenue: number;
   cost: number;
+  hasCost: boolean;
   margin: number;
   equipment: string;
+}
+
+interface CarrierOnLane {
+  carrier: string; loads: number; lastDate: string;
+  lastCost: number | null; avgCost: number | null; minCost: number | null; maxCost: number | null;
+}
+
+/** Who ran this lane and what we paid them — most recent carrier first. */
+function summarizeCarriers(shipments: HistoricalShipment[]): CarrierOnLane[] {
+  const m = new Map<string, HistoricalShipment[]>();
+  shipments.forEach(s => m.set(s.carrier, [...(m.get(s.carrier) ?? []), s]));
+  return [...m.entries()].map(([carrier, list]) => {
+    const byDate = [...list].sort((a, b) => b.date.localeCompare(a.date));
+    const costs = list.filter(s => s.hasCost).map(s => s.cost);
+    const lastWithCost = byDate.find(s => s.hasCost);
+    return {
+      carrier, loads: list.length, lastDate: byDate[0]?.date ?? '',
+      lastCost: lastWithCost ? lastWithCost.cost : null,
+      avgCost: costs.length ? costs.reduce((a, b) => a + b, 0) / costs.length : null,
+      minCost: costs.length ? Math.min(...costs) : null,
+      maxCost: costs.length ? Math.max(...costs) : null,
+    };
+  }).sort((a, b) => b.lastDate.localeCompare(a.lastDate) || b.loads - a.loads);
 }
 
 interface CompResult {
@@ -387,12 +411,22 @@ export default function LanesView() {
       .filter((load) => viewMode === 'booked' || load.simpleStatus === 'Locked');
   }, [rawLoads, filters, priorRange, viewMode]);
 
-  // Available equipment types from current loads
-  const lookupEquipOptions = useMemo(() => {
-    const set = new Set<string>();
-    loads.forEach(l => set.add(getEquipmentLabel(l)));
-    return [...set].sort();
-  }, [loads]);
+    // Lane Lookup is for quoting, so it searches all stored history, not just the date range at the top
+    const lookupLoads = useMemo(() => rawLoads
+      .filter(isActiveLoad)
+      .filter(l => filters.team === 'all' || l.team === filters.team)
+      .filter(l => filters.equipmentType === 'all' || l.equipmentType === filters.equipmentType)
+      .map(computeLoad)
+      .filter(l => viewMode === 'booked' || l.simpleStatus === 'Locked'),
+    [rawLoads, filters.team, filters.equipmentType, viewMode]);
+
+    // Available equipment types for the lookup
+    const lookupEquipOptions = useMemo(() => {
+      const set = new Set<string>();
+      lookupLoads.forEach(l => set.add(getEquipmentLabel(l)));
+      return [...set].sort();
+    }, [lookupLoads]);
+
 
   // ─── Lane Rows (for Perf Table / Problem Lanes / Cost Trend) ───
   const laneRows = useMemo((): LaneRow[] => {
@@ -469,12 +503,12 @@ export default function LanesView() {
       e[side]++;
       m.set(key, e);
     };
-    loads.forEach(l => {
+    lookupLoads.forEach(l => {
       add(l.originCity, l.originState, 'asOrigin');
       add(l.destinationCity, l.destinationState, 'asDest');
     });
     return [...m.values()];
-  }, [loads]);
+  }, [lookupLoads]);
 
   const [openSuggest, setOpenSuggest] = useState<'origin' | 'dest' | null>(null);
 
@@ -525,7 +559,7 @@ export default function LanesView() {
     // Group loads by lane+equipment
     type LaneEntry = { lane: string; equipment: string; loads: ComputedLoad[]; originCity: string; originState: string; destCity: string; destState: string };
     const laneMap = new Map<string, LaneEntry>();
-    loads.forEach(load => {
+    lookupLoads.forEach(load => {
       const { key, label } = getLaneIdentity(load, level);
       const equip = getEquipmentLabel(load);
       const mapKey = `${key}||${equip}`;
@@ -568,6 +602,7 @@ export default function LanesView() {
           carrier: l.carrierName || 'Unknown',
           revenue: l.revenue ?? 0,
           cost: l.carrierCost ?? 0,
+          hasCost: l.carrierCost != null,
           margin: l.revenue && l.revenue > 0 ? ((l.revenue - (l.carrierCost ?? 0)) / l.revenue) * 100 : 0,
           equipment: getEquipmentLabel(l),
         })),
@@ -768,7 +803,7 @@ export default function LanesView() {
     if (totalResults > 0 && totalLoadsInResults < 3) warnings.push('Low sample size — use these comps as directional only.');
 
     return { sections, hasExact, message, warnings };
-  }, [loads, originInput, destInput, lookupMode, lookupEquipFilter, level]);
+    }, [lookupLoads, originInput, destInput, lookupMode, lookupEquipFilter, level]);
 
   // ─── Performance Table ───
   const perfTable = useMemo(() => {
@@ -908,7 +943,23 @@ export default function LanesView() {
             </div>
           </div>
 
+         {(() => {
+            const carriers = summarizeCarriers(r.shipments);
+            if (carriers.length === 0) return null;
+            const recent = carriers[0];
+            return (
+              <p className="text-xs text-muted-foreground mt-2 ml-6">
+                <Truck className="inline h-3 w-3 mr-1 -mt-0.5" />
+                {carriers.length} carrier{carriers.length > 1 ? 's' : ''} ran this lane · most recent:{' '}
+                <span className="text-foreground font-medium">{recent.carrier}</span>
+                {recent.lastCost != null && <> at <span className="font-mono text-foreground">{fmt(recent.lastCost)}</span></>}
+                {' '}({formatShortDate(recent.lastDate)})
+              </p>
+            );
+          })()}
+
           {r.hasMissingFinancials && (
+
             <div className="flex items-center gap-1 mt-2 ml-6">
               <Info className="h-3 w-3 text-warning" />
               <span className="text-[10px] text-warning">Some historical loads have incomplete financial data</span>
@@ -917,7 +968,38 @@ export default function LanesView() {
         </button>
 
         {isExpanded && (
-          <div className="border-t p-4">
+                   <div className="border-t p-4">
+            <p className="text-xs font-medium text-muted-foreground mb-2">
+              Carriers on this lane ({summarizeCarriers(r.shipments).length})
+            </p>
+            <div className="overflow-x-auto mb-5">
+              <table className="w-full text-xs min-w-[600px]">
+                <thead>
+                  <tr className="text-muted-foreground border-b">
+                    <th className="text-left py-1.5 px-2">Carrier</th>
+                    <th className="text-right py-1.5 px-2">Loads</th>
+                    <th className="text-left py-1.5 px-2">Last ran</th>
+                    <th className="text-right py-1.5 px-2">Last cost</th>
+                    <th className="text-right py-1.5 px-2">Avg cost</th>
+                    <th className="text-right py-1.5 px-2">Range</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {summarizeCarriers(r.shipments).map(c => (
+                    <tr key={c.carrier} className="border-b border-border/30">
+                      <td className="py-1.5 px-2 font-medium">{c.carrier}</td>
+                      <td className="py-1.5 px-2 text-right font-mono">{c.loads}</td>
+                      <td className="py-1.5 px-2">{formatShortDate(c.lastDate)}</td>
+                      <td className="py-1.5 px-2 text-right font-mono">{fmt(c.lastCost)}</td>
+                      <td className="py-1.5 px-2 text-right font-mono">{fmt(c.avgCost)}</td>
+                      <td className="py-1.5 px-2 text-right font-mono text-muted-foreground">
+                        {c.minCost != null && c.maxCost != null && c.minCost !== c.maxCost ? `${fmt(c.minCost)} – ${fmt(c.maxCost)}` : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs font-medium text-muted-foreground">
                 Historical Shipments ({r.shipments.length})

@@ -81,7 +81,8 @@ function getPresetRange(preset: TimeframePreset, refDate: string): { start: stri
 
 // End date = today, so newly synced loads are visible by default
 const defaultEnd = new Date().toISOString().slice(0, 10);
-const defaultStart = new Date(Date.now() - 180 * 86400000).toISOString().slice(0, 10);
+const DEFAULT_PRESET: TimeframePreset = 'rolling30';
+const defaultStart = new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10);
 
 const defaultFilters: Filters = {
   dateRange: { start: defaultStart, end: defaultEnd },
@@ -97,7 +98,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const [currentView, setCurrentView] = useState<ViewType>('dashboard');
   const [comparisonMode, setComparisonMode] = useState<ComparisonMode>('prior');
-  const [timeframePreset, setTimeframePresetState] = useState<TimeframePreset>('custom');
+  const [timeframePreset, setTimeframePresetState] = useState<TimeframePreset>(DEFAULT_PRESET);
   const [viewMode, setViewMode] = useState<ViewMode>('booked');
   const [filters, setFilters] = useState<Filters>(defaultFilters);
   const importBusy = false; // CSV import is in-memory only now
@@ -136,7 +137,7 @@ const refreshLoads = useCallback(async () => {
 
   const resetFilters = useCallback(() => {
     setFilters(defaultFilters);
-    setTimeframePresetState('custom');
+    setTimeframePresetState(DEFAULT_PRESET);
     setComparisonMode('prior');
     setViewMode('booked');
   }, []);
@@ -144,7 +145,7 @@ const refreshLoads = useCallback(async () => {
   const filtersActive =
     filters.dateRange.start !== defaultStart || filters.dateRange.end !== defaultEnd ||
     filters.team !== 'all' || filters.equipmentType !== 'all' || filters.search !== '' ||
-    timeframePreset !== 'custom' || comparisonMode !== 'prior' || viewMode !== 'booked';
+    timeframePreset !== DEFAULT_PRESET || comparisonMode !== 'prior' || viewMode !== 'booked';
 
   const teams = useMemo(() => [...new Set(rawLoads.map(l => l.team).filter(Boolean) as string[])], [rawLoads]);
   const equipmentTypes = useMemo(() => [...new Set(rawLoads.map(l => l.equipmentType).filter(Boolean) as string[])], [rawLoads]);
