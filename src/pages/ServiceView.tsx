@@ -6,8 +6,9 @@ import InfoTip from '@/components/InfoTip';
 import { DataTrustBadge, DataWarnings } from '@/components/DataTrust';
 import type { ComputedLoad } from '@/types/loads';
 import LoadListDrawer from '@/components/LoadListDrawer';
+import { isScored } from '@/lib/computeLoads';
 
-type StatusFilter = 'all' | 'on-time' | 'late' | 'hidden' | 'customer' | 'shipper' | 'on-time-pickup' | 'late-pickup' | 'unknown';
+type StatusFilter = 'all' | 'on-time' | 'late' | 'hidden' | 'customer' | 'shipper' | 'excluded' | 'on-time-pickup' | 'late-pickup' | 'unknown';
 type GroupBy = 'broker' | 'team' | 'customer' | 'carrier';
 
 const STATUS_FILTERS: { key: StatusFilter; label: string; match: (l: ComputedLoad) => boolean }[] = [
@@ -19,6 +20,7 @@ const STATUS_FILTERS: { key: StatusFilter; label: string; match: (l: ComputedLoa
   { key: 'late-pickup', label: 'Late pickup', match: l => l.onTimePickup === 'Late' },
   { key: 'customer', label: 'Customer reschedule', match: l => l.rescheduleReason === 'customer' },
   { key: 'shipper', label: 'Shipper delay', match: l => l.rescheduleReason === 'shipper_delay' },
+  { key: 'excluded', label: 'Excluded (rescheduled)', match: l => l.excludedFromOnTime },
   { key: 'unknown', label: "Can't score", match: l => l.onTimeDelivery === 'Unknown' },
 ];
 
@@ -51,8 +53,8 @@ export default function ServiceView() {
   const usingNewRules = loads.length > 0 && synced / loads.length >= 0.9;
 
   const kpi = useMemo(() => {
-    const knownPu = loads.filter(l => l.onTimePickup !== 'Unknown');
-    const knownDel = loads.filter(l => l.onTimeDelivery !== 'Unknown');
+    const knownPu = loads.filter(l => isScored(l.onTimePickup));
+    const knownDel = loads.filter(l => isScored(l.onTimeDelivery));
     const knownTurvo = loads.filter(l => l.onTimeDeliveryTurvo && l.onTimeDeliveryTurvo !== 'Unknown');
     return {
       total: loads.length,
@@ -65,21 +67,23 @@ export default function ServiceView() {
       hidden: loads.filter(l => l.hiddenLate).length,
       customer: loads.filter(l => l.rescheduleReason === 'customer').length,
       shipper: loads.filter(l => l.rescheduleReason === 'shipper_delay').length,
-      unknown: loads.length - knownDel.length,
+      excluded: loads.filter(l => l.excludedFromOnTime).length,
+      unknown: loads.filter(l => l.onTimeDelivery === 'Unknown').length,
     };
   }, [loads]);
 
   // Accountability: who owns the late shipments
   const groups = useMemo(() => {
-    const m = new Map<string, { name: string; loads: number; known: number; onTime: number; late: number; hidden: number; customer: number; puKnown: number; puOnTime: number }>();
+      const m = new Map<string, { name: string; loads: number; known: number; onTime: number; late: number; hidden: number; excluded: number; puKnown: number; puOnTime: number }>();
     for (const l of loads) {
       const name = groupValue(l, groupBy);
-      const g = m.get(name) ?? { name, loads: 0, known: 0, onTime: 0, late: 0, hidden: 0, customer: 0, puKnown: 0, puOnTime: 0 };
+      const g = m.get(name) ?? { name, loads: 0, known: 0, onTime: 0, late: 0, hidden: 0, excluded: 0, puKnown: 0, puOnTime: 0 };
       g.loads++;
-      if (l.onTimeDelivery !== 'Unknown') { g.known++; if (l.onTimeDelivery === 'On Time') g.onTime++; else g.late++; }
-      if (l.onTimePickup !== 'Unknown') { g.puKnown++; if (l.onTimePickup === 'On Time') g.puOnTime++; }
+      if (isScored(l.onTimeDelivery)) { g.known++; if (l.onTimeDelivery === 'On Time') g.onTime++; else g.late++; }
+      if (isScored(l.onTimePickup)) { g.puKnown++; if (l.onTimePickup === 'On Time') g.puOnTime++; }
       if (l.hiddenLate) g.hidden++;
-      if (l.rescheduleReason === 'customer') g.customer++;
+      if (l.excludedFromOnTime) g.excluded++;
+
       m.set(name, g);
     }
     return [...m.values()].sort((a, b) => b.late - a.late || b.loads - a.loads);
@@ -101,14 +105,14 @@ export default function ServiceView() {
         <div className="flex items-center gap-2">
           <h2 className="text-2xl font-bold flex items-center gap-2">
             Service Performance
-            <InfoTip text="Pickup is scored against its current appointment, so a customer moving the pickup never counts as late. Delivery is scored against the original appointment, unless the customer rescheduled the load or the shipper held the truck — then the new date is used. A moved date can no longer hide a late carrier." />
+             <InfoTip text="Pickup is scored against its current appointment, so a customer moving the pickup never counts as late. Delivery is scored against the original appointment, unless the customer rescheduled the load or the shipper held the truck — those loads are left out of on-time % entirely. A moved date can no longer hide a late carrier." />
           </h2>
           <DataTrustBadge
             level={!usingNewRules ? 'incomplete' : kpi.unknown / Math.max(kpi.total, 1) < 0.1 ? 'verified' : 'partial'}
             tooltip={usingNewRules ? `${kpi.unknown} shipments missing arrival times` : 'Re-sync from Turvo to use the new on-time rules'}
           />
         </div>
-        <p className="text-muted-foreground text-sm mt-1">Late = late at delivery. Customer reschedules and shipper delays are not counted as late.</p>
+          <p className="text-muted-foreground text-sm mt-1">Late = late at delivery. Customer reschedules and shipper delays are excluded from on-time %.</p>
         <DataWarnings warnings={[
           ...(!usingNewRules ? ['Most loads were not synced with the new rules yet — run Settings → Sync now (180 days) so on-time uses original vs. rescheduled dates.'] : []),
           ...(kpi.unknown > 0 ? [`${kpi.unknown} shipments have no delivery arrival time in Turvo — excluded from on-time %`] : []),
@@ -121,7 +125,7 @@ export default function ServiceView() {
         <MetricCard label="On-Time Delivery" value={fmtPct(kpi.delPct)} sub={kpi.turvoPct != null ? `Turvo shows ${fmtPct(kpi.turvoPct)}` : `${kpi.delKnown} scored`} tone={kpi.delPct != null && kpi.delPct >= 90 ? 'good' : 'warn'} onClick={() => openList('on-time')} secondary={{ label: `${kpi.late} late`, onClick: () => openList('late') }} />
         <MetricCard label="Late Shipments" value={kpi.late.toString()} sub="Late at delivery" tone={kpi.late === 0 ? 'good' : 'bad'} onClick={() => openList('late')} />
         <MetricCard label="Hidden Late" value={kpi.hidden.toString()} sub="On time in Turvo, date moved" tone={kpi.hidden === 0 ? 'good' : 'bad'} onClick={() => openList('hidden')} />
-        <MetricCard label="Customer Reschedules" value={kpi.customer.toString()} sub={`+${kpi.shipper} shipper delays · not late`} tone="neutral" onClick={() => openList('customer')} />
+        <MetricCard label="Excluded (Rescheduled)" value={kpi.excluded.toString()} sub={`${kpi.customer} customer · ${kpi.shipper} shipper · not in on-time %`} tone="neutral" onClick={() => openList('excluded')} />
         <MetricCard label="Can't Score" value={kpi.unknown.toString()} sub="Missing arrival time" tone={kpi.unknown === 0 ? 'good' : 'warn'} onClick={() => openList('unknown')} />
       </div>
 
@@ -143,7 +147,7 @@ export default function ServiceView() {
               <th className="text-right py-2">On-time delivery</th>
               <th className="text-right py-2">On-time pickup</th>
               <th className="text-right py-2">Hidden late</th>
-              <th className="text-right py-2">Customer resched.</th>
+               <th className="text-right py-2">Excluded</th>
             </tr></thead>
             <tbody>
               {groups.slice(0, 15).map(g => {
@@ -160,7 +164,8 @@ export default function ServiceView() {
                     <td className={`py-2 text-right font-mono ${otd != null && otd < 80 ? 'text-destructive' : ''}`}>{fmtPct(otd)}</td>
                     <td className="py-2 text-right font-mono">{fmtPct(pct(g.puOnTime, g.puKnown))}</td>
                     <td className="py-2 text-right font-mono">{g.hidden || '—'}</td>
-                    <td className="py-2 text-right font-mono">{g.customer || '—'}</td>
+                                        <td className="py-2 text-right font-mono">{g.excluded || '—'}</td>
+
                   </tr>
                 );
               })}
@@ -282,7 +287,7 @@ function MetricCard({ label, value, sub, tone, onClick, secondary }: {
 }
 
 function StatusBadge({ status, hidden }: { status: string; hidden?: boolean }) {
-  const variant = status === 'On Time' ? 'default' : status === 'Late' ? 'destructive' : 'secondary';
+  const variant = status === 'On Time' ? 'default' : status === 'Late' ? 'destructive' : status === 'Excluded' ? 'outline' : 'secondary';
   return <Badge variant={variant} className="text-xs whitespace-nowrap">{hidden ? 'Late (hidden)' : status}</Badge>;
 }
 

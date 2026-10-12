@@ -1,4 +1,4 @@
-export type OnTimeStatus = 'On Time' | 'Late' | 'Unknown';
+export type OnTimeStatus = 'On Time' | 'Late' | 'Excluded' | 'Unknown';
 
 /** Why a delivery appointment moved (set by the Turvo sync; Turvo stores no reason, so it is inferred). */
 export type RescheduleReason = 'customer' | 'shipper_delay' | 'carrier';
@@ -59,6 +59,8 @@ export interface ComputedLoad extends Load {
   simpleStatus: 'Booked' | 'Locked';
   /** On time in Turvo, but really late (carrier delay hidden by a moved date). */
   hiddenLate: boolean;
+  onTimeDeliveryRaw: OnTimeStatus;
+  excludedFromOnTime: boolean;
 }
 
 export interface DataQuality {

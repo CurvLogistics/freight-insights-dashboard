@@ -3,6 +3,7 @@ import { Sparkles, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
 import { useData } from '@/context/DataContext';
 import { ComputedLoad } from '@/types/loads';
+import { isScored } from '@/lib/computeLoads';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
@@ -45,7 +46,7 @@ function buildPrompt(question: string, loads: ComputedLoad[], header: string) {
   const revenue = loads.reduce((s, l) => s + (l.revenue ?? 0), 0);
   const gp = loads.reduce((s, l) => s + (l.grossProfit ?? 0), 0);
   const onTime = (k: 'onTimePickup' | 'onTimeDelivery') => {
-    const known = loads.filter(l => l[k] !== 'Unknown');
+    const known = loads.filter(l => isScored(l[k]));
     return pct(known.filter(l => l[k] === 'On Time').length, known.length);
   };
 

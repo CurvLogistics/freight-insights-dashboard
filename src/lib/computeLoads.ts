@@ -1,6 +1,22 @@
-import { Load, ComputedLoad, DataQuality, OnTimeStatus } from '@/types/loads';
+import { Load, ComputedLoad, DataQuality, OnTimeStatus, RescheduleReason } from '@/types/loads';
 
 const ON_TIME_TOLERANCE_MS = 60 * 60 * 1000; // 60 minutes (CSV fallback only)
+
+/** Reschedules listed here are removed from on-time % entirely. Tweak after Ryan/Johnny review. */
+export const ON_TIME_RULES = {
+  excludedRescheduleReasons: ['customer', 'shipper_delay'] as RescheduleReason[],
+  /** Ignore small moves (e.g. same-day window shifts). 0 = any move counts. */
+  minShiftHours: 0,
+};
+
+/** Counts toward on-time % (in the denominator). */
+export const isScored = (s?: OnTimeStatus) => s === 'On Time' || s === 'Late';
+
+export function isExcludedReschedule(load: Load): boolean {
+  if (load.serviceSource !== 'turvo' || !load.deliveryRescheduled || !load.rescheduleReason) return false;
+  if (!ON_TIME_RULES.excludedRescheduleReasons.includes(load.rescheduleReason)) return false;
+  return Math.abs(load.appointmentShiftHours ?? Infinity) >= ON_TIME_RULES.minShiftHours;
+}
 
 export function computeLoad(load: Load): ComputedLoad {
   const grossProfit = (load.revenue != null && load.carrierCost != null) ? load.revenue - load.carrierCost : undefined;
@@ -20,16 +36,20 @@ export function computeLoad(load: Load): ComputedLoad {
   const onTimePickup: OnTimeStatus = fromSync && load.onTimePickup
     ? load.onTimePickup
     : getOnTimeStatus(load.pickupDate, load.scheduledPickupDate);
-  const onTimeDelivery: OnTimeStatus = fromSync && load.onTimeDelivery
+  const onTimeDeliveryRaw: OnTimeStatus = fromSync && load.onTimeDelivery
     ? load.onTimeDelivery
     : getOnTimeStatus(load.deliveryDate, load.scheduledDeliveryDate);
+  const excludedFromOnTime = isExcludedReschedule(load);
+  const onTimeDelivery: OnTimeStatus = excludedFromOnTime ? 'Excluded' : onTimeDeliveryRaw;
+
   const hiddenLate = fromSync && load.onTimeDeliveryTurvo === 'On Time' && onTimeDelivery === 'Late';
 
   const statusLower = (load.shipmentStatus || '').toLowerCase();
   const isLocked = load.readyToBillDate || statusLower === 'ready for billing' || statusLower === 'completed';
   const simpleStatus: 'Booked' | 'Locked' = isLocked ? 'Locked' : 'Booked';
 
-  return { ...load, grossProfit, marginPercent, lane, stateLane, onTimePickup, onTimeDelivery, hiddenLate, simpleStatus };
+  return { ...load, grossProfit, marginPercent, lane, stateLane, onTimePickup, onTimeDelivery,
+           onTimeDeliveryRaw, excludedFromOnTime, hiddenLate, simpleStatus };
 }
 
 function getOnTimeStatus(actual?: string, scheduled?: string): OnTimeStatus {

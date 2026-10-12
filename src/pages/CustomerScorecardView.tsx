@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Search, ArrowUpDown, ArrowUp, ArrowDown, Filter, AlertTriangle, Eye, EyeOff } from 'lucide-react';
 import { ComputedLoad } from '@/types/loads';
+import { isScored } from '@/lib/computeLoads';
 import { DataTrustBadge, DataWarnings } from '@/components/DataTrust';
 
 const fmt = (n?: number | null) => n != null ? `$${Math.round(n).toLocaleString('en-US')}` : '—';
@@ -109,12 +110,12 @@ export default function CustomerScorecardView() {
       if (l.carrierCost != null) e.cost += l.carrierCost;
 
       // OTP — exclude unknown (missing timestamps)
-      if (l.onTimePickup !== 'Unknown') {
+     if (isScored(l.onTimePickup)) {
         e.otpEligible++;
         if (l.onTimePickup === 'On Time') e.otpOnTime++;
       }
       // OTD — exclude unknown
-      if (l.onTimeDelivery !== 'Unknown') {
+     if (isScored(l.onTimeDelivery)) {
         e.otdEligible++;
         if (l.onTimeDelivery === 'On Time') e.otdOnTime++;
       }
