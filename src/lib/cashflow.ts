@@ -35,6 +35,7 @@ export function cashItems(loads: Load[], side: Side, asOf = todayISO()): CashIte
     const paid      = side === 'ar' ? l.arPaid          : l.apPaid;
     const invoiced = invAmount != null;
     if (paid) continue;
+    if (!invoiced && !l.turvoId) continue; // load never synced with finance data: no data, so don't guess
 
     let amount: number | undefined;
     let date: string | undefined;
