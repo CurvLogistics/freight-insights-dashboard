@@ -47,7 +47,15 @@ export interface Load {
   minutesLate?: number;
   toReview?: boolean;
   serviceSource?: 'turvo' | 'csv';
+
+  // --- Finance fields from the Turvo sync (turvo-mcp-server/loads_sync.py) ---
+  turvoId?: number;
+  arInvoiceNumber?: string; arInvoiceDate?: string; arDueDate?: string; arInvoiceAmount?: number;
+  arOpenBalance?: number; arPaid?: boolean; arLastPaymentDate?: string;
+  apInvoiceNumber?: string; apInvoiceDate?: string; apDueDate?: string; apInvoiceAmount?: number;
+  apOpenBalance?: number; apPaid?: boolean; apLastPaymentDate?: string;
 }
+
 
 export interface ComputedLoad extends Load {
   grossProfit?: number;
@@ -73,4 +81,5 @@ export interface DataQuality {
   missingCarrier: number;
 }
 
-export type ViewType = 'dashboard' | 'service' | 'lanes' | 'productivity' | 'exceptions' | 'customer-scorecard' | 'carrier-scorecard' | 'insights' | 'settings';
+export type ViewType = 'dashboard' | 'service' | 'lanes' | 'productivity' | 'exceptions' | 'customer-scorecard' | 'carrier-scorecard' | 'cash-flow' | 'insights' | 'settings';
+

@@ -7,6 +7,7 @@ import ProductivityView from '@/pages/ProductivityView';
 import ExceptionsView from '@/pages/ExceptionsView';
 import CustomerScorecardView from '@/pages/CustomerScorecardView';
 import CarrierScorecardView from '@/pages/CarrierScorecardView';
+import CashFlowView from '@/pages/CashFlowView';
 import InsightsView from '@/pages/InsightsView';
 import SettingsView from '@/pages/SettingsView';
 
@@ -20,6 +21,7 @@ function ViewRouter() {
     case 'exceptions': return <ExceptionsView />;
     case 'customer-scorecard': return <CustomerScorecardView />;
     case 'carrier-scorecard': return <CarrierScorecardView />;
+    case 'cash-flow': return <CashFlowView />;
     case 'insights': return <InsightsView />;
     case 'settings': return <SettingsView />;
     default: return <DashboardView />;

@@ -1,6 +1,6 @@
 import { useData } from '@/context/DataContext';
 import { ViewType } from '@/types/loads';
-import { LayoutDashboard, Truck, MapPin, Users, AlertTriangle, Upload, Search, UserCheck, Building2, Lightbulb, Settings, X } from 'lucide-react';
+import { LayoutDashboard, Truck, MapPin, Users, AlertTriangle, Upload, Search, UserCheck, Building2, Lightbulb, Settings, X, Wallet } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useRef } from 'react';
@@ -14,6 +14,7 @@ const navItems: { id: ViewType; label: string; icon: React.ElementType }[] = [
   { id: 'lanes', label: 'Lane Intelligence', icon: MapPin },
   { id: 'customer-scorecard', label: 'Customer Scorecard', icon: Building2 },
   { id: 'carrier-scorecard', label: 'Carrier Scorecard', icon: UserCheck },
+  { id: 'cash-flow', label: 'Cash Flow', icon: Wallet },
   { id: 'exceptions', label: 'Exception Center', icon: AlertTriangle },
   { id: 'insights', label: 'Insights', icon: Lightbulb },
   { id: 'settings', label: 'Settings', icon: Settings },
