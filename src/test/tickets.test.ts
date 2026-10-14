@@ -2,8 +2,9 @@ import { describe, it, expect } from 'vitest';
 import { computeLoad } from '@/lib/computeLoads';
 import { cashItems, weeklyForecast } from '@/lib/cashflow';
 import type { Load } from '@/types/loads';
-import { isActiveLoad } from '@/lib/computeLoads';
+import { isActiveLoad, isMissingPickup } from '@/lib/computeLoads';
 import { buildLaneVolatility } from '@/lib/laneVolatility';
+import { brokerDrilldown } from '@/lib/brokerDrilldown';
 
 const rescheduled = (extra: Partial<Load>): Load => ({
   loadId: 'T-1', serviceSource: 'turvo', shipmentStatus: 'Delivered',
@@ -68,5 +69,37 @@ describe('Lane Volatility', () => {
   });
   it('returns nothing for an owner with no loads', () => {
     expect(buildLaneVolatility(loads, 'Zoe')).toEqual([]);
+  });
+});
+
+describe('Missing Pickup', () => {
+  const now = '2026-10-14T12:00:00Z';
+  const base: Load = { loadId: 'P', serviceSource: 'turvo', pickupDate: '2026-10-13', scheduledPickupDate: '2026-10-13T12:00:00Z' };
+  it('flags a past pickup with no arrival', () => {
+    expect(isMissingPickup(base, now)).toBe(true);
+  });
+  it('ignores pickups that have an arrival', () => {
+    expect(isMissingPickup({ ...base, pickupArrival: '2026-10-13T13:00:00Z' }, now)).toBe(false);
+  });
+  it('ignores future pickups', () => {
+    expect(isMissingPickup({ ...base, scheduledPickupDate: '2026-10-15T12:00:00Z' }, now)).toBe(false);
+  });
+});
+
+describe('Productivity drill-down', () => {
+  const mk = (id: string, broker: string, lane: string, customerName: string, revenue: number, carrierCost: number) =>
+    computeLoad({ loadId: id, broker, customerName, revenue, carrierCost,
+      originCity: lane, originState: 'FL', destinationCity: 'Atlanta', destinationState: 'GA' });
+  const loads = [
+    mk('1', 'Ana', 'Miami', 'Acme', 1000, 900),
+    mk('2', 'Ana', 'Miami', 'Acme', 1200, 1000),
+    mk('3', 'Ana', 'Tampa', 'Beta', 2000, 1500),
+    mk('4', 'Ben', 'Miami', 'Acme', 5000, 1000),
+  ];
+  it('ranks the operator\'s own lanes and customers by volume', () => {
+    const d = brokerDrilldown(loads, 'Ana');
+    expect(d.loads).toHaveLength(3);
+    expect(d.lanes[0]).toMatchObject({ name: 'Miami, FL → Atlanta, GA', loads: 2, revenue: 2200, profit: 300 });
+    expect(d.customers.map(c => [c.name, c.loads])).toEqual([['Acme', 2], ['Beta', 1]]);
   });
 });

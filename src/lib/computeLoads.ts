@@ -70,12 +70,23 @@ export function isActiveLoad(l: Pick<Load, 'shipmentStatus'>): boolean {
   return !INACTIVE_STATUS.test(l.shipmentStatus || '');
 }
 
+/**
+ * Pickup is due (appointment has passed) but Turvo has no pickup arrival.
+ * The sync always fills pickupDate from the appointment, so "!pickupDate" was never true
+ * and Missing Pickup showed 0. CSV imports have no arrival field, so they keep the old check.
+ */
+export function isMissingPickup(l: Load, now: string = new Date().toISOString()): boolean {
+  if (l.serviceSource !== 'turvo') return !l.pickupDate;
+  const due = l.scheduledPickupDate || l.pickupDate;
+  return !!due && due <= now && !l.pickupArrival;
+}
+
 export type DataQualityIssue = 'missingRevenue' | 'missingCarrierCost' | 'missingPickup' | 'missingDelivery';
 
 export const DATA_QUALITY_CHECKS: Record<DataQualityIssue, { label: string; match: (l: Load) => boolean; fix: string }> = {
   missingRevenue:     { label: 'Missing Revenue',  match: l => l.revenue == null,     fix: 'Add the customer rate in Turvo (Financials → Receivables).' },
   missingCarrierCost: { label: 'Missing Cost',     match: l => l.carrierCost == null, fix: 'Add the carrier rate in Turvo (Financials → Payables).' },
-  missingPickup:      { label: 'Missing Pickup',   match: l => !l.pickupDate,         fix: 'Add the pickup appointment or arrival in Turvo.' },
+  missingPickup:      { label: 'Missing Pickup',   match: l => isMissingPickup(l),    fix: 'Pickup appointment has passed but no arrival is recorded — add the pickup arrival in Turvo.' },
   missingDelivery:    { label: 'Missing Delivery', match: l => !l.deliveryDate,       fix: 'Add the delivery appointment or arrival in Turvo.' },
 };
 
@@ -93,7 +104,7 @@ export function computeDataQuality(allLoads: Load[]): DataQuality {
     totalLoads: total,
     missingRevenue: loads.filter(l => l.revenue == null).length,
     missingCarrierCost: loads.filter(l => l.carrierCost == null).length,
-    missingPickup: loads.filter(l => !l.pickupDate).length,
+    missingPickup: loads.filter(l => isMissingPickup(l)).length,
     missingDelivery: loads.filter(l => !l.deliveryDate).length,
     missingCustomer: loads.filter(l => !l.customerName).length,
     missingCarrier: loads.filter(l => !l.carrierName).length,

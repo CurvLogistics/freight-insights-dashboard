@@ -156,6 +156,9 @@ function HistoryImportCard() {
   );
 }
 
+/** Historical CSV import is hidden — all data now comes from the Turvo API. Flip to true to bring it back. */
+const SHOW_CSV_IMPORT = false;
+
 const SettingsView = () => (
   <div className="p-6 space-y-6 max-w-4xl">
     <div>
@@ -163,7 +166,7 @@ const SettingsView = () => (
       <p className="text-sm text-muted-foreground">Manage integrations and data connections</p>
     </div>
     <TurvoSyncCard />
-    <HistoryImportCard />
+    {SHOW_CSV_IMPORT && <HistoryImportCard />}
   </div>
 );
 

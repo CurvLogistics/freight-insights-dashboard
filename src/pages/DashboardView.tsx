@@ -23,6 +23,8 @@ const fmtCompact = (n: number) => {
   return `$${Math.round(n).toLocaleString('en-US')}`;
 };
 
+const SHOW_BROKER_COMPARISON = false;
+
 export default function DashboardView() {
   const { loads, rawLoads, dataQuality, filters, comparisonMode, viewMode } = useData();
   const [dashFilter, setDashFilter] = useState<{ type: 'customer' | 'broker' | 'lane'; value: string } | null>(null);
@@ -126,13 +128,9 @@ export default function DashboardView() {
 
   const hasPrev = prevLoads.length > 0;
 
-  const compCustomers = useMemo(() =>
-    hasPrev ? buildComparisonRows(l => l.customerName || 'Unknown', l => l.customerName || 'Unknown', loads, prevLoads) : [],
-  [hasPrev, loads, prevLoads, buildComparisonRows]);
-
   const compBrokers = useMemo(() =>
-    hasPrev ? buildComparisonRows(l => l.broker || 'Unassigned', l => l.broker || 'Unassigned', loads, prevLoads) : [],
-  [hasPrev, loads, prevLoads, buildComparisonRows]);
+    SHOW_BROKER_COMPARISON && hasPrev ? buildComparisonRows(l => l.broker || 'Unassigned', l => l.broker || 'Unassigned', loads, prevLoads) : [],
+    [hasPrev, loads, prevLoads, buildComparisonRows]);
 
   const compLanes = useMemo(() =>
     hasPrev ? buildComparisonRows(l => l.lane, l => l.lane, loads, prevLoads) : [],
@@ -324,8 +322,7 @@ export default function DashboardView() {
       {hasPrev && (
         <>
           <h3 className="text-lg font-bold mt-2">Period Comparison — {compLabel}</h3>
-          <ComparisonRankTable title={`Customer Comparison (${compLabel})`} data={compCustomers} onRowClick={handleRowClick('customer')} selectedRow={dashFilter?.type === 'customer' ? dashFilter.value : null} />
-          <ComparisonRankTable title={`Broker Comparison (${compLabel})`} data={compBrokers} onRowClick={handleRowClick('broker')} selectedRow={dashFilter?.type === 'broker' ? dashFilter.value : null} />
+            {SHOW_BROKER_COMPARISON && <ComparisonRankTable title={`Broker Comparison (${compLabel})`} data={compBrokers} onRowClick={handleRowClick('broker')} selectedRow={dashFilter?.type === 'broker' ? dashFilter.value : null} />}
           <ComparisonRankTable title={`Lane Comparison (${compLabel})`} data={compLanes} onRowClick={handleRowClick('lane')} selectedRow={dashFilter?.type === 'lane' ? dashFilter.value : null} />
         </>
       )}

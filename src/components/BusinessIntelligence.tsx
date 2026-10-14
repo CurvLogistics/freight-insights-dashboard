@@ -170,7 +170,6 @@ export default function BusinessIntelligence() {
       hasPrev: prv.totalLoads > 0,
     };
   }, [rawLoads, filters, comparisonMode]);
-
    const laneVolatility = useMemo(
     () => (data && owner ? buildLaneVolatility(data.curLoads, owner) : []),
     [data, owner],
@@ -311,9 +310,7 @@ export default function BusinessIntelligence() {
           </CardContent>
         </Card>
 
-        {/* Quote Guidance */}
-    
-            {/* Lane Volatility (was "Quote Guidance") — scoped to one account owner's own customers/lanes */}
+       {/* Lane Volatility (was "Quote Guidance") — scoped to one account owner's own customers/lanes */}
         <Card>
           <CardHeader className="pb-2 space-y-2">
             <CardTitle className="text-sm font-medium flex items-center gap-2">

@@ -20,6 +20,9 @@ const navItems: { id: ViewType; label: string; icon: React.ElementType }[] = [
   { id: 'settings', label: 'Settings', icon: Settings },
 ];
 
+/** Sidebar CSV import is hidden — all data now comes from the Turvo API. Flip to true to bring it back. */
+const SHOW_CSV_IMPORT = false;
+
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const {
     currentView, setCurrentView, filters, setFilters, importCSV,
@@ -91,17 +94,19 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           ))}
         </nav>
 
-        <div className="p-3 border-t border-sidebar-border">
-          <input ref={fileRef} type="file" accept=".csv" onChange={handleUpload} className="hidden" />
-          <button
-            onClick={() => fileRef.current?.click()}
-            disabled={importBusy || dataLoading}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm bg-sidebar-primary/20 text-sidebar-primary hover:bg-sidebar-primary/30 transition-colors font-medium disabled:opacity-50"
-          >
-            <Upload className="w-4 h-4" />
-            {importBusy ? 'Importing…' : 'Import Turvo CSV'}
-          </button>
-        </div>
+          {SHOW_CSV_IMPORT && (
+          <div className="p-3 border-t border-sidebar-border">
+            <input ref={fileRef} type="file" accept=".csv" onChange={handleUpload} className="hidden" />
+            <button
+              onClick={() => fileRef.current?.click()}
+              disabled={importBusy || dataLoading}
+              className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm bg-sidebar-primary/20 text-sidebar-primary hover:bg-sidebar-primary/30 transition-colors font-medium disabled:opacity-50"
+            >
+              <Upload className="w-4 h-4" />
+              {importBusy ? 'Importing…' : 'Import Turvo CSV'}
+            </button>
+          </div>
+        )}
       </aside>
 
       {/* Main */}
