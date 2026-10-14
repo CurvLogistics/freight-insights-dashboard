@@ -11,6 +11,7 @@ import InfoTip from '@/components/InfoTip';
 import { DataTrustBadge } from '@/components/DataTrust';
 import { ComputedLoad, Load } from '@/types/loads';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { summarizeCarriers, mostRecentCarrier, type CarrierSortKey } from '@/lib/laneCarriers';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const fmt = (n?: number | null) => n != null ? `$${Math.round(n).toLocaleString('en-US')}` : '—';
@@ -98,29 +99,6 @@ interface HistoricalShipment {
   hasCost: boolean;
   margin: number;
   equipment: string;
-}
-
-interface CarrierOnLane {
-  carrier: string; loads: number; lastDate: string;
-  lastCost: number | null; avgCost: number | null; minCost: number | null; maxCost: number | null;
-}
-
-/** Who ran this lane and what we paid them — most recent carrier first. */
-function summarizeCarriers(shipments: HistoricalShipment[]): CarrierOnLane[] {
-  const m = new Map<string, HistoricalShipment[]>();
-  shipments.forEach(s => m.set(s.carrier, [...(m.get(s.carrier) ?? []), s]));
-  return [...m.entries()].map(([carrier, list]) => {
-    const byDate = [...list].sort((a, b) => b.date.localeCompare(a.date));
-    const costs = list.filter(s => s.hasCost).map(s => s.cost);
-    const lastWithCost = byDate.find(s => s.hasCost);
-    return {
-      carrier, loads: list.length, lastDate: byDate[0]?.date ?? '',
-      lastCost: lastWithCost ? lastWithCost.cost : null,
-      avgCost: costs.length ? costs.reduce((a, b) => a + b, 0) / costs.length : null,
-      minCost: costs.length ? Math.min(...costs) : null,
-      maxCost: costs.length ? Math.max(...costs) : null,
-    };
-  }).sort((a, b) => b.lastDate.localeCompare(a.lastDate) || b.loads - a.loads);
 }
 
 interface CompResult {
@@ -380,6 +358,12 @@ export default function LanesView() {
   const [lookupEquipFilter, setLookupEquipFilter] = useState('all');
   const [expandedComps, setExpandedComps] = useState<Set<string>>(new Set());
   const [shipmentSort, setShipmentSort] = useState<ShipmentSortKey>('date');
+  const [carrierSortKey, setCarrierSortKey] = useState<CarrierSortKey>('loads');
+  const [carrierSortDir, setCarrierSortDir] = useState<SortDir>('desc');
+  const handleCarrierSort = (key: CarrierSortKey) => {
+    if (carrierSortKey === key) setCarrierSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
+    else { setCarrierSortKey(key); setCarrierSortDir('desc'); }
+  };
 
   // Table state
   const [tableSortKey, setTableSortKey] = useState<SortKey>('loadsCur');
@@ -945,8 +929,8 @@ export default function LanesView() {
 
          {(() => {
             const carriers = summarizeCarriers(r.shipments);
-            if (carriers.length === 0) return null;
-            const recent = carriers[0];
+            const recent = mostRecentCarrier(carriers);
+            if (!recent) return null;
             return (
               <p className="text-xs text-muted-foreground mt-2 ml-6">
                 <Truck className="inline h-3 w-3 mr-1 -mt-0.5" />
@@ -977,15 +961,31 @@ export default function LanesView() {
                 <thead>
                   <tr className="text-muted-foreground border-b">
                     <th className="text-left py-1.5 px-2">Carrier</th>
-                    <th className="text-right py-1.5 px-2">Loads</th>
-                    <th className="text-left py-1.5 px-2">Last ran</th>
-                    <th className="text-right py-1.5 px-2">Last cost</th>
-                    <th className="text-right py-1.5 px-2">Avg cost</th>
+                    {([
+                      ['loads', 'Loads', 'text-right'],
+                      ['lastDate', 'Last ran', 'text-left'],
+                      ['lastCost', 'Last cost', 'text-right'],
+                      ['avgCost', 'Avg cost', 'text-right'],
+                    ] as [CarrierSortKey, string, string][]).map(([key, label, align]) => (
+                      <th
+                        key={key}
+                        className={`${align} py-1.5 px-2 cursor-pointer select-none hover:text-foreground transition-colors`}
+                        onClick={() => handleCarrierSort(key)}
+                        aria-sort={carrierSortKey === key ? (carrierSortDir === 'asc' ? 'ascending' : 'descending') : 'none'}
+                      >
+                        <span className="inline-flex items-center gap-1">
+                          {label}
+                          {carrierSortKey !== key
+                            ? <ArrowUpDown className="h-3 w-3 opacity-40" />
+                            : carrierSortDir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
+                        </span>
+                      </th>
+                    ))}
                     <th className="text-right py-1.5 px-2">Range</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {summarizeCarriers(r.shipments).map(c => (
+                  {summarizeCarriers(r.shipments, carrierSortKey, carrierSortDir).map(c => (
                     <tr key={c.carrier} className="border-b border-border/30">
                       <td className="py-1.5 px-2 font-medium">{c.carrier}</td>
                       <td className="py-1.5 px-2 text-right font-mono">{c.loads}</td>

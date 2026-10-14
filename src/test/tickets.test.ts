@@ -5,6 +5,7 @@ import type { Load } from '@/types/loads';
 import { isActiveLoad, isMissingPickup } from '@/lib/computeLoads';
 import { buildLaneVolatility } from '@/lib/laneVolatility';
 import { brokerDrilldown } from '@/lib/brokerDrilldown';
+import { summarizeCarriers, mostRecentCarrier } from '@/lib/laneCarriers';
 
 const rescheduled = (extra: Partial<Load>): Load => ({
   loadId: 'T-1', serviceSource: 'turvo', shipmentStatus: 'Delivered',
@@ -101,5 +102,29 @@ describe('Productivity drill-down', () => {
     expect(d.loads).toHaveLength(3);
     expect(d.lanes[0]).toMatchObject({ name: 'Miami, FL → Atlanta, GA', loads: 2, revenue: 2200, profit: 300 });
     expect(d.customers.map(c => [c.name, c.loads])).toEqual([['Acme', 2], ['Beta', 1]]);
+  });
+});
+
+
+describe('Lane Intelligence carrier table', () => {
+  const ship = (carrier: string, date: string, cost: number | null) =>
+    ({ carrier, date, cost: cost ?? 0, hasCost: cost != null });
+  const shipments = [
+    ship('Alpha', '2026-10-10', 1000),
+    ship('Beta', '2026-09-01', 900), ship('Beta', '2026-09-05', 1100), ship('Beta', '2026-09-20', 1300),
+    ship('Gamma', '2026-08-01', null),
+  ];
+  it('defaults to highest volume first', () => {
+    expect(summarizeCarriers(shipments).map(c => c.carrier)).toEqual(['Beta', 'Alpha', 'Gamma']);
+  });
+  it('sorts by last run and cost both ways, missing cost last', () => {
+    expect(summarizeCarriers(shipments, 'lastDate', 'desc').map(c => c.carrier)).toEqual(['Alpha', 'Beta', 'Gamma']);
+    expect(summarizeCarriers(shipments, 'lastDate', 'asc').map(c => c.carrier)).toEqual(['Gamma', 'Beta', 'Alpha']);
+    expect(summarizeCarriers(shipments, 'lastCost', 'asc').map(c => c.carrier)).toEqual(['Alpha', 'Beta', 'Gamma']);
+    expect(summarizeCarriers(shipments, 'avgCost', 'desc').map(c => c.carrier)).toEqual(['Beta', 'Alpha', 'Gamma']);
+    expect(summarizeCarriers(shipments, 'loads', 'asc').map(c => c.carrier)).toEqual(['Alpha', 'Gamma', 'Beta']);
+  });
+  it('still finds the most recent carrier for the summary line', () => {
+    expect(mostRecentCarrier(summarizeCarriers(shipments))?.carrier).toBe('Alpha');
   });
 });

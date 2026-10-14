@@ -4,7 +4,7 @@ import { computeLoad, computeDataQuality, parseCSV, isActiveLoad } from '@/lib/c
 import { fetchLoadsFromApi } from '@/lib/loadsRepository';
 
 export type ComparisonMode = 'prior' | 'yoy';
-export type TimeframePreset = 'rolling7' | 'rolling30' | 'mtd' | 'qtd' | 'ytd' | 'custom';
+export type TimeframePreset = 'rolling7' | 'rolling30' | 'rolling90' |  'mtd' | 'qtd' | 'ytd' | 'custom';
 export type ViewMode = 'booked' | 'locked';
 export type DataSource = 'turvo' | 'csv' | 'none';
 
@@ -60,6 +60,10 @@ function getPresetRange(preset: TimeframePreset, refDate: string): { start: stri
     }
     case 'rolling30': {
       const s = new Date(ref); s.setDate(s.getDate() - 29);
+      return { start: s.toISOString().slice(0, 10), end };
+    }
+    case 'rolling90': {
+      const s = new Date(ref); s.setDate(s.getDate() - 89);
       return { start: s.toISOString().slice(0, 10), end };
     }
     case 'mtd': {
