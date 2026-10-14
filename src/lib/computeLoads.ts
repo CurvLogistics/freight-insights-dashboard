@@ -60,9 +60,14 @@ function getOnTimeStatus(actual?: string, scheduled?: string): OnTimeStatus {
   return actualMs <= scheduledMs + ON_TIME_TOLERANCE_MS ? 'On Time' : 'Late';
 }
 
-/** Canceled and draft loads never have revenue/cost and are excluded from every metric. */
+/**
+ * Canceled and draft loads never have revenue/cost and are excluded from every metric.
+ * Matched loosely so "Cancelled", "CANCELED", "Canceled - customer", trailing spaces etc.
+ * from CSV imports or older syncs are excluded too.
+ */
+const INACTIVE_STATUS = /^\s*(cancell?ed|draft)\b/i;
 export function isActiveLoad(l: Pick<Load, 'shipmentStatus'>): boolean {
-  return l.shipmentStatus !== 'Canceled' && l.shipmentStatus !== 'Draft';
+  return !INACTIVE_STATUS.test(l.shipmentStatus || '');
 }
 
 export type DataQualityIssue = 'missingRevenue' | 'missingCarrierCost' | 'missingPickup' | 'missingDelivery';

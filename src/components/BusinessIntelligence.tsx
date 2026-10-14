@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useData } from '@/context/DataContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Activity, TrendingDown, Target, AlertTriangle } from 'lucide-react';
@@ -6,6 +6,8 @@ import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '@
 import { Load } from '@/types/loads';
 import { isActiveLoad } from '@/lib/computeLoads';
 import { getComparisonWindow, inRange } from '@/lib/comparison';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { laneKey, buildLaneVolatility, FLOOR_TARGET, STRETCH_TARGET } from '@/lib/laneVolatility';
 
 const fmt = (n: number) => `$${Math.round(n).toLocaleString('en-US')}`;
 const pct = (n: number) => `${n.toFixed(1)}%`;
@@ -21,9 +23,6 @@ const delta = (cur: number, prev: number) => {
   const p = (d / prev) * 100;
   return { abs: d, pct: p, label: `${d >= 0 ? '+' : ''}${p.toFixed(1)}%` };
 };
-
-const FLOOR_TARGET = 8;
-const STRETCH_TARGET = 12;
 
 interface PeriodAgg {
   loads: Load[];
@@ -44,7 +43,13 @@ function aggregatePeriod(loads: Load[]): PeriodAgg {
   return { loads, totalLoads: loads.length, revenue, cost, profit, margin, avgCost };
 }
 
-
+const OWNER_STORAGE_KEY = 'freightops.laneVolatility.owner';
+function readStoredOwner(): string {
+  try { return localStorage.getItem(OWNER_STORAGE_KEY) || ''; } catch { return ''; }
+}
+function storeOwner(v: string) {
+  try { localStorage.setItem(OWNER_STORAGE_KEY, v); } catch { /* private mode etc. */ }
+}
 
 interface LaneComparison {
   name: string;
@@ -58,17 +63,18 @@ interface LaneComparison {
   marginCur: number;
   marginPrev: number;
   marginDelta: number;
-  avgRevenue: number;
-  avgCost: number;
-  avgProfit: number;
-  avgMargin: number;
-  quoteFloor: number;
-  quoteStretch: number;
   actions: string[];
 }
 
 export default function BusinessIntelligence() {
   const { rawLoads, filters, comparisonMode } = useData();
+  const [owner, setOwnerState] = useState<string>(readStoredOwner);
+  const setOwner = (v: string) => { setOwnerState(v); storeOwner(v); };
+
+  const owners = useMemo(
+    () => [...new Set(rawLoads.map(l => l.broker).filter(Boolean) as string[])].sort((a, b) => a.localeCompare(b)),
+    [rawLoads],
+  );
 
   const data = useMemo(() => {
     const { start, end } = filters.dateRange;
@@ -93,9 +99,6 @@ export default function BusinessIntelligence() {
 
     const cur = aggregatePeriod(curLoads);
     const prv = aggregatePeriod(prevLoads);
-
-    const laneKey = (l: Load) =>
-      `${l.originCity || '?'}, ${l.originState || '?'} → ${l.destinationCity || '?'}, ${l.destinationState || '?'}`;
 
     const curByLane = new Map<string, Load[]>();
     curLoads.forEach(l => {
@@ -127,13 +130,6 @@ export default function BusinessIntelligence() {
       const avgCostPrev = pl.length > 0 ? pCost / pl.length : 0;
       const costD = delta(avgCostCur, avgCostPrev);
 
-      const avgRevenue = cRev / cl.length;
-      const avgCost = cCost / cl.length;
-      const avgProfit = avgRevenue - avgCost;
-      const avgMargin = avgRevenue > 0 ? (avgProfit / avgRevenue) * 100 : 0;
-      const quoteFloor = avgCost / (1 - FLOOR_TARGET / 100);
-      const quoteStretch = avgCost / (1 - STRETCH_TARGET / 100);
-
       const actions: string[] = [];
       if (costD.abs > 0 && pl.length > 0) actions.push('Recruit carriers');
       if (marginCur < marginPrev && pl.length > 0) actions.push('Renegotiate buy rates');
@@ -143,7 +139,7 @@ export default function BusinessIntelligence() {
         name, loads: cl.length,
         avgCostCur, avgCostPrev, costDelta: costD.abs, costDeltaPct: costD.pct,
         revenueCur: cRev, costCur: cCost, marginCur, marginPrev, marginDelta: marginCur - marginPrev,
-        avgRevenue, avgCost, avgProfit, avgMargin, quoteFloor, quoteStretch, actions,
+        actions,
       });
     });
 
@@ -169,11 +165,16 @@ export default function BusinessIntelligence() {
     const modeLabel = comparisonMode === 'yoy' ? 'YoY' : 'vs prior';
 
     return {
-      cur, prv, lanes, interpretations, modeLabel,
+      cur, prv, lanes, interpretations, modeLabel, curLoads,
       loadsDelta, revDelta, profitDelta, marginDelta, costDelta,
       hasPrev: prv.totalLoads > 0,
     };
   }, [rawLoads, filters, comparisonMode]);
+
+   const laneVolatility = useMemo(
+    () => (data && owner ? buildLaneVolatility(data.curLoads, owner) : []),
+    [data, owner],
+  );
 
   if (!data) return null;
 
@@ -181,7 +182,6 @@ export default function BusinessIntelligence() {
 
   const costMovement = [...lanes].filter(l => l.avgCostPrev > 0 || l.avgCostCur > 0).sort((a, b) => b.costDelta - a.costDelta).slice(0, 10);
   const marginCompression = [...lanes].filter(l => l.marginPrev !== 0 || l.marginCur !== 0).sort((a, b) => a.marginDelta - b.marginDelta).slice(0, 10);
-  const quoteGuidance = [...lanes].filter(l => l.loads > 0).sort((a, b) => b.loads - a.loads).slice(0, 15);
   const actionNeeded = lanes.filter(l => l.actions.length > 0 && (l.loads >= 10 || (l.loads === 0 && (l.avgCostPrev > 0)))).sort((a, b) => a.marginCur - b.marginCur).slice(0, 15);
 
   const colorCls = (v: number, invert = false) => {
@@ -312,13 +312,24 @@ export default function BusinessIntelligence() {
         </Card>
 
         {/* Quote Guidance */}
+    
+            {/* Lane Volatility (was "Quote Guidance") — scoped to one account owner's own customers/lanes */}
         <Card>
-          <CardHeader className="pb-2">
+          <CardHeader className="pb-2 space-y-2">
             <CardTitle className="text-sm font-medium flex items-center gap-2">
               <Target className="w-4 h-4 text-primary" />
-              Quote Guidance
+              Lane Volatility
               <span className="text-[10px] text-muted-foreground font-normal ml-1">Floor {FLOOR_TARGET}% · Stretch {STRETCH_TARGET}%</span>
             </CardTitle>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">Account owner</span>
+              <Select value={owner || undefined} onValueChange={setOwner}>
+                <SelectTrigger className="h-8 w-48 text-xs"><SelectValue placeholder="Select your name" /></SelectTrigger>
+                <SelectContent>
+                  {owners.map(o => <SelectItem key={o} value={o} className="text-xs">{o}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
           </CardHeader>
           <CardContent className="p-0">
             <div className="overflow-auto max-h-[400px]">
@@ -326,6 +337,7 @@ export default function BusinessIntelligence() {
                 <TableHeader>
                   <TableRow>
                     <TableHead className="text-xs">Lane</TableHead>
+                    <TableHead className="text-xs text-right">Loads</TableHead>
                     <TableHead className="text-xs text-right">Avg Rev</TableHead>
                     <TableHead className="text-xs text-right">Avg Cost</TableHead>
                     <TableHead className="text-xs text-right">Avg Margin</TableHead>
@@ -334,9 +346,15 @@ export default function BusinessIntelligence() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {quoteGuidance.map(l => (
+                  {laneVolatility.length === 0 && (
+                    <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground text-xs py-8">
+                      {owner ? `No loads for ${owner} in this period` : 'Select your name to see your lanes'}
+                    </TableCell></TableRow>
+                  )}
+                  {laneVolatility.map(l => (
                     <TableRow key={l.name} className="even:bg-muted/30">
                       <TableCell className="text-xs font-medium max-w-[200px] truncate" title={l.name}>{l.name}</TableCell>
+                      <TableCell className="text-xs text-right font-mono">{l.loads}</TableCell>
                       <TableCell className="text-xs text-right font-mono">{fmt(l.avgRevenue)}</TableCell>
                       <TableCell className="text-xs text-right font-mono">{fmt(l.avgCost)}</TableCell>
                       <TableCell className={`text-xs text-right font-mono ${l.avgMargin < FLOOR_TARGET ? 'text-destructive' : l.avgMargin < STRETCH_TARGET ? 'text-warning' : 'text-success'}`}>
