@@ -1,4 +1,5 @@
 import { Load, ComputedLoad, DataQuality, OnTimeStatus, RescheduleReason } from '@/types/loads';
+import { getDelayFault, parseDelayReason } from '@/lib/delayReasons';
 
 const ON_TIME_TOLERANCE_MS = 60 * 60 * 1000; // 60 minutes (CSV fallback only)
 
@@ -12,10 +13,17 @@ export const ON_TIME_RULES = {
 /** Counts toward on-time % (in the denominator). */
 export const isScored = (s?: OnTimeStatus) => s === 'On Time' || s === 'Late';
 
-export function isExcludedReschedule(load: Load): boolean {
-  if (load.serviceSource !== 'turvo' || !load.deliveryRescheduled || !load.rescheduleReason) return false;
-  if (!ON_TIME_RULES.excludedRescheduleReasons.includes(load.rescheduleReason)) return false;
-  return Math.abs(load.appointmentShiftHours ?? Infinity) >= ON_TIME_RULES.minShiftHours;
+  /**
+   * Removed from on-time % because the shipper or customer caused it.
+   * A structured reason entered in Turvo (ticket 14) wins over the sync's inferred reason.
+   */
+  export function isExcludedReschedule(load: Load, rawDelivery: OnTimeStatus = 'Unknown'): boolean {
+    if (load.serviceSource !== 'turvo') return false;
+    const explicit = parseDelayReason(load.delayReason);
+    if (explicit) return explicit !== 'carrier' && (!!load.deliveryRescheduled || rawDelivery === 'Late');
+    if (!load.deliveryRescheduled || !load.rescheduleReason) return false;
+    if (!ON_TIME_RULES.excludedRescheduleReasons.includes(load.rescheduleReason)) return false;
+    return Math.abs(load.appointmentShiftHours ?? Infinity) >= ON_TIME_RULES.minShiftHours;
 }
 
 export function computeLoad(load: Load): ComputedLoad {
@@ -39,7 +47,10 @@ export function computeLoad(load: Load): ComputedLoad {
   const onTimeDeliveryRaw: OnTimeStatus = fromSync && load.onTimeDelivery
     ? load.onTimeDelivery
     : getOnTimeStatus(load.deliveryDate, load.scheduledDeliveryDate);
-  const excludedFromOnTime = isExcludedReschedule(load);
+    const excludedFromOnTime = isExcludedReschedule(load, onTimeDeliveryRaw);
+  // Raw actuals = arrival vs. the original appointment (Turvo sync); CSV has only one date.
+  const onTimeDeliveryActual: OnTimeStatus = fromSync && load.onTimeDeliveryOriginal ? load.onTimeDeliveryOriginal : onTimeDeliveryRaw;
+  const { fault: delayFault, source: delayFaultSource } = getDelayFault(load, onTimeDeliveryActual);
   const onTimeDelivery: OnTimeStatus = excludedFromOnTime ? 'Excluded' : onTimeDeliveryRaw;
 
   const hiddenLate = fromSync && load.onTimeDeliveryTurvo === 'On Time' && onTimeDelivery === 'Late';
@@ -49,7 +60,8 @@ export function computeLoad(load: Load): ComputedLoad {
   const simpleStatus: 'Booked' | 'Locked' = isLocked ? 'Locked' : 'Booked';
 
   return { ...load, grossProfit, marginPercent, lane, stateLane, onTimePickup, onTimeDelivery,
-           onTimeDeliveryRaw, excludedFromOnTime, hiddenLate, simpleStatus };
+            onTimeDeliveryRaw, excludedFromOnTime, hiddenLate, simpleStatus,
+  onTimeDeliveryActual, delayFault, delayFaultSource };
 }
 
 function getOnTimeStatus(actual?: string, scheduled?: string): OnTimeStatus {

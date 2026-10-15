@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Search, ArrowUpDown, ArrowUp, ArrowDown, Filter, AlertTriangle, Eye, EyeOff } from 'lucide-react';
 import { ComputedLoad } from '@/types/loads';
 import { isScored } from '@/lib/computeLoads';
+import { summarizeOtd, type OtdSummary } from '@/lib/delayReasons';
 import { DataTrustBadge, DataWarnings } from '@/components/DataTrust';
 
 const fmt = (n?: number | null) => n != null ? `$${Math.round(n).toLocaleString('en-US')}` : '—';
@@ -49,6 +50,8 @@ interface CustomerRow {
   // Service metrics
   otpPct: number | null;
   otdPct: number | null;
+    /** Raw actuals vs. original appointment + what was excused (ticket 13). */
+  otd: OtdSummary;
   claimsPct: number | null;
   pickupChangesPct: number | null;
   carrierIssuesPct: number;
@@ -96,16 +99,18 @@ export default function CustomerScorecardView() {
       otpEligible: number; otpOnTime: number;
       otdEligible: number; otdOnTime: number;
       serviceReasons: { carrier: number; customer: number; internal: number };
+      all: ComputedLoad[];
     }>();
 
     regionLoads.forEach(l => {
       const key = (l.customerName || 'Unknown').trim().toUpperCase();
       let e = map.get(key);
       if (!e) {
-        e = { name: l.customerName || 'Unknown', loads: 0, revenue: 0, cost: 0, activeLanes: new Set(), lastShipDate: '', laneLoads: new Map(), otpEligible: 0, otpOnTime: 0, otdEligible: 0, otdOnTime: 0, serviceReasons: { carrier: 0, customer: 0, internal: 0 } };
+        e = { name: l.customerName || 'Unknown', loads: 0, revenue: 0, cost: 0, activeLanes: new Set(), lastShipDate: '', laneLoads: new Map(), otpEligible: 0, otpOnTime: 0, otdEligible: 0, otdOnTime: 0, serviceReasons: { carrier: 0, customer: 0, internal: 0 }, all: [] };
         map.set(key, e);
       }
       e.loads++;
+      e.all.push(l);
       if (l.revenue != null) e.revenue += l.revenue;
       if (l.carrierCost != null) e.cost += l.carrierCost;
 
@@ -191,7 +196,7 @@ export default function CustomerScorecardView() {
         name: e.name, loads: e.loads, revenue: e.revenue, cost: e.cost,
         profit, margin, avgRevLoad, activeLanes: e.activeLanes.size,
         lastShipDate: e.lastShipDate, daysSinceLast, lanes, topLanePct, flags,
-        otpPct, otdPct, claimsPct, pickupChangesPct,
+        otpPct, otdPct, otd: summarizeOtd(e.all), claimsPct, pickupChangesPct,
         carrierIssuesPct, customerIssuesPct, internalIssuesPct,
       });
     });
@@ -411,26 +416,27 @@ function ServiceMetricBadge({ label, value, thresholds }: { label: string; value
 }
 
 function ServicePerformanceSection({ c }: { c: CustomerRow }) {
-  const hasIssues = c.carrierIssuesPct > 0 || c.customerIssuesPct > 0 || c.internalIssuesPct > 0;
+   const { otd } = c;
+  const hasIssues = otd.carrierLate + otd.excludedShipper + otd.excludedCustomer > 0;
   return (
     <>
       <div className="text-xs font-semibold text-muted-foreground">Service Performance</div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <ServiceMetricBadge label="On-Time Pickup" value={c.otpPct} thresholds="otp" />
-        <ServiceMetricBadge label="On-Time Delivery" value={c.otdPct} thresholds="otp" />
-        <ServiceMetricBadge label="Claims" value={c.claimsPct} thresholds="claims" />
+        <ServiceMetricBadge label="True On-Time Delivery" value={c.otdPct} thresholds="otp" />
+        <ServiceMetricBadge label="Raw On-Time Delivery" value={otd.rawPct} thresholds="otp" />
         <MiniCard label="Pickup Changes" value={c.pickupChangesPct != null ? `${c.pickupChangesPct.toFixed(1)}%` : 'N/A'} />
       </div>
 
       <div className="text-xs font-semibold text-muted-foreground">Issue Breakdown</div>
       {hasIssues ? (
         <div className="grid grid-cols-3 gap-3">
-          <MiniCard label="Carrier Issues" value={`${c.carrierIssuesPct.toFixed(1)}%`} />
-          <MiniCard label="Customer Issues" value={`${c.customerIssuesPct.toFixed(1)}%`} />
-          <MiniCard label="Internal Issues" value={`${c.internalIssuesPct.toFixed(1)}%`} />
+           <MiniCard label="Carrier fault (scored)" value={otd.carrierLate.toString()} />
+          <MiniCard label="Shipper fault (excused)" value={otd.excludedShipper.toString()} />
+          <MiniCard label="Customer fault (excused)" value={otd.excludedCustomer.toString()} />
         </div>
       ) : (
-        <div className="text-xs text-muted-foreground italic">No classified issues for this customer</div>
+        <div className="text-xs text-muted-foreground italic">No late or rescheduled deliveries in this period</div>
       )}
     </>
   );

@@ -6,6 +6,7 @@ import { isActiveLoad, isMissingPickup } from '@/lib/computeLoads';
 import { buildLaneVolatility } from '@/lib/laneVolatility';
 import { brokerDrilldown } from '@/lib/brokerDrilldown';
 import { summarizeCarriers, mostRecentCarrier } from '@/lib/laneCarriers';
+import { parseDelayReason, summarizeOtd } from '@/lib/delayReasons';
 
 const rescheduled = (extra: Partial<Load>): Load => ({
   loadId: 'T-1', serviceSource: 'turvo', shipmentStatus: 'Delivered',
@@ -126,5 +127,52 @@ describe('Lane Intelligence carrier table', () => {
   });
   it('still finds the most recent carrier for the summary line', () => {
     expect(mostRecentCarrier(summarizeCarriers(shipments))?.carrier).toBe('Alpha');
+  });
+});
+
+describe('Delay reasons (tickets 13–14)', () => {
+  it('parses the agreed comment format and codes', () => {
+    expect(parseDelayReason('RDD / delivery appointment / product availability')).toBe('shipper');
+    expect(parseDelayReason('Customer moved delivery appointment')).toBe('customer');
+    expect(parseDelayReason('Truck breakdown on I-95')).toBe('carrier');
+    expect(parseDelayReason('CARRIER')).toBe('carrier');
+    expect(parseDelayReason('')).toBeNull();
+    expect(parseDelayReason('see notes')).toBeNull();
+  });
+
+  const late = (extra: Partial<Load>): Load => ({
+    loadId: 'D', serviceSource: 'turvo', onTimeDelivery: 'Late', onTimeDeliveryOriginal: 'Late', ...extra,
+  });
+
+  it('Turvo reason wins: shipper fault is excused, carrier fault is scored', () => {
+    const shipper = computeLoad(late({ delayReason: 'Product not ready' }));
+    expect(shipper.delayFault).toBe('shipper');
+    expect(shipper.delayFaultSource).toBe('turvo');
+    expect(shipper.onTimeDelivery).toBe('Excluded');
+
+    const carrier = computeLoad(late({ delayReason: 'Driver breakdown', deliveryRescheduled: true, rescheduleReason: 'customer' }));
+    expect(carrier.delayFault).toBe('carrier');
+    expect(carrier.onTimeDelivery).toBe('Late');
+  });
+
+  it('a late load with no reason is the carrier\'s', () => {
+    const l = computeLoad(late({}));
+    expect(l.delayFault).toBe('carrier');
+    expect(l.delayFaultSource).toBe('inferred');
+  });
+
+  it('shows raw and true on-time side by side', () => {
+    const loads = [
+      computeLoad({ loadId: '1', serviceSource: 'turvo', onTimeDelivery: 'On Time', onTimeDeliveryOriginal: 'On Time' }),
+      computeLoad(late({ loadId: '2' })),
+      computeLoad(late({ loadId: '3', delayReason: 'Customer RDD change' })),
+      computeLoad(late({ loadId: '4', deliveryRescheduled: true, rescheduleReason: 'shipper_delay', appointmentShiftHours: 24 })),
+    ];
+    const s = summarizeOtd(loads);
+    expect(s.rawPct).toBe(25);        // 1 of 4 on time vs. original appointment
+    expect(s.truePct).toBe(50);       // 1 of 2 once customer + shipper delays are excused
+    expect(s.excludedCustomer).toBe(1);
+    expect(s.excludedShipper).toBe(1);
+    expect(s.carrierLate).toBe(1);
   });
 });

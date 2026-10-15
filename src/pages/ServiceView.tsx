@@ -7,6 +7,7 @@ import { DataTrustBadge, DataWarnings } from '@/components/DataTrust';
 import type { ComputedLoad } from '@/types/loads';
 import LoadListDrawer from '@/components/LoadListDrawer';
 import { isScored } from '@/lib/computeLoads';
+import { summarizeOtd } from '@/lib/delayReasons';
 
 type StatusFilter = 'all' | 'on-time' | 'late' | 'hidden' | 'customer' | 'shipper' | 'excluded' | 'on-time-pickup' | 'late-pickup' | 'unknown';
 type GroupBy = 'broker' | 'team' | 'customer' | 'carrier';
@@ -18,8 +19,8 @@ const STATUS_FILTERS: { key: StatusFilter; label: string; match: (l: ComputedLoa
   { key: 'hidden', label: 'Hidden late', match: l => l.hiddenLate },
   { key: 'on-time-pickup', label: 'On-time pickup', match: l => l.onTimePickup === 'On Time' },
   { key: 'late-pickup', label: 'Late pickup', match: l => l.onTimePickup === 'Late' },
-  { key: 'customer', label: 'Customer reschedule', match: l => l.rescheduleReason === 'customer' },
-  { key: 'shipper', label: 'Shipper delay', match: l => l.rescheduleReason === 'shipper_delay' },
+  { key: 'customer', label: 'Customer fault (excused)', match: l => l.excludedFromOnTime && l.delayFault === 'customer' },
+  { key: 'shipper', label: 'Shipper fault (excused)', match: l => l.excludedFromOnTime && l.delayFault === 'shipper' },
   { key: 'excluded', label: 'Excluded (rescheduled)', match: l => l.excludedFromOnTime },
   { key: 'unknown', label: "Can't score", match: l => l.onTimeDelivery === 'Unknown' },
 ];
@@ -56,7 +57,9 @@ export default function ServiceView() {
     const knownPu = loads.filter(l => isScored(l.onTimePickup));
     const knownDel = loads.filter(l => isScored(l.onTimeDelivery));
     const knownTurvo = loads.filter(l => l.onTimeDeliveryTurvo && l.onTimeDeliveryTurvo !== 'Unknown');
+    const otd = summarizeOtd(loads);
     return {
+    rawPct: otd.rawPct,
       total: loads.length,
       puPct: pct(knownPu.filter(l => l.onTimePickup === 'On Time').length, knownPu.length),
       puLate: knownPu.filter(l => l.onTimePickup === 'Late').length,
@@ -65,8 +68,8 @@ export default function ServiceView() {
       turvoPct: pct(knownTurvo.filter(l => l.onTimeDeliveryTurvo === 'On Time').length, knownTurvo.length),
       late: knownDel.filter(l => l.onTimeDelivery === 'Late').length,
       hidden: loads.filter(l => l.hiddenLate).length,
-      customer: loads.filter(l => l.rescheduleReason === 'customer').length,
-      shipper: loads.filter(l => l.rescheduleReason === 'shipper_delay').length,
+      customer: loads.filter(l => l.excludedFromOnTime && l.delayFault === 'customer').length,
+      shipper: loads.filter(l => l.excludedFromOnTime && l.delayFault === 'shipper').length,
       excluded: loads.filter(l => l.excludedFromOnTime).length,
       unknown: loads.filter(l => l.onTimeDelivery === 'Unknown').length,
     };
@@ -112,7 +115,7 @@ export default function ServiceView() {
             tooltip={usingNewRules ? `${kpi.unknown} shipments missing arrival times` : 'Re-sync from Turvo to use the new on-time rules'}
           />
         </div>
-          <p className="text-muted-foreground text-sm mt-1">Late = late at delivery. Customer reschedules and shipper delays are excluded from on-time %.</p>
+            <p className="text-muted-foreground text-sm mt-1">True on-time excludes shipper/customer-caused delays; Raw = arrival vs. the original appointment with nothing excused.</p>
         <DataWarnings warnings={[
           ...(!usingNewRules ? ['Most loads were not synced with the new rules yet — run Settings → Sync now (180 days) so on-time uses original vs. rescheduled dates.'] : []),
           ...(kpi.unknown > 0 ? [`${kpi.unknown} shipments have no delivery arrival time in Turvo — excluded from on-time %`] : []),
@@ -122,7 +125,7 @@ export default function ServiceView() {
       <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
         <MetricCard label="Total Shipments" value={kpi.total.toLocaleString('en-US')} sub="In current filters" tone="neutral" onClick={() => openList('all')} />
         <MetricCard label="On-Time Pickup" value={fmtPct(kpi.puPct)} sub={`${kpi.puLate} late pickups`} tone={kpi.puPct != null && kpi.puPct >= 90 ? 'good' : 'warn'} onClick={() => openList('on-time-pickup')} secondary={{ label: `${kpi.puLate} late`, onClick: () => openList('late-pickup') }} />
-        <MetricCard label="On-Time Delivery" value={fmtPct(kpi.delPct)} sub={kpi.turvoPct != null ? `Turvo shows ${fmtPct(kpi.turvoPct)}` : `${kpi.delKnown} scored`} tone={kpi.delPct != null && kpi.delPct >= 90 ? 'good' : 'warn'} onClick={() => openList('on-time')} secondary={{ label: `${kpi.late} late`, onClick: () => openList('late') }} />
+        <MetricCard label="True On-Time Delivery" value={fmtPct(kpi.delPct)} sub={`Raw ${fmtPct(kpi.rawPct)}${kpi.turvoPct != null ? ` · Turvo ${fmtPct(kpi.turvoPct)}` : ''}`} tone={'good'} />
         <MetricCard label="Late Shipments" value={kpi.late.toString()} sub="Late at delivery" tone={kpi.late === 0 ? 'good' : 'bad'} onClick={() => openList('late')} />
         <MetricCard label="Hidden Late" value={kpi.hidden.toString()} sub="On time in Turvo, date moved" tone={kpi.hidden === 0 ? 'good' : 'bad'} onClick={() => openList('hidden')} />
         <MetricCard label="Excluded (Rescheduled)" value={kpi.excluded.toString()} sub={`${kpi.customer} customer · ${kpi.shipper} shipper · not in on-time %`} tone="neutral" onClick={() => openList('excluded')} />

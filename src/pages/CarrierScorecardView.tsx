@@ -8,6 +8,7 @@ import { Search, ArrowUpDown, ArrowUp, ArrowDown, Filter, FileText, Eye, EyeOff,
 import { ComputedLoad } from '@/types/loads';
 import { DataTrustBadge, DataWarnings } from '@/components/DataTrust';
 import { formatUSDate } from '@/lib/dates';
+import { summarizeOtd, type OtdSummary } from '@/lib/delayReasons';
 
 /* ── Weekly trend helpers ── */
 const REF_DATE = new Date('2026-04-02');
@@ -100,7 +101,7 @@ function getRegion(state?: string): string {
   return STATE_REGIONS[state.toUpperCase().trim()] || 'Other';
 }
 
-type SortKey = 'name' | 'loads' | 'revenue' | 'cost' | 'avgCost' | 'margin' | 'otp' | 'otd' | 'grade' | 'late' | 'activeLanes';
+type SortKey = 'name' | 'loads' | 'revenue' | 'cost' | 'avgCost' | 'margin' | 'otp' | 'otd' | 'rawOtd' | 'grade' | 'late' | 'activeLanes';
 type SortDir = 'asc' | 'desc';
 type LaneSortKey = 'lane' | 'loads' | 'avgCost' | 'otd';
 
@@ -114,6 +115,8 @@ interface CarrierRow {
   avgCost: number;
   otpPct: number | null;
   otdPct: number | null;
+    /** Raw actuals vs. original appointment + what was excused (ticket 13). */
+  otd: OtdSummary;
   latePickup: number;
   lateDelivery: number;
   activeLanes: number;
@@ -199,7 +202,8 @@ export default function CarrierScorecardView() {
       laneLoads: Map<string, { loads: number; cost: number; revenue: number; otd: number; knownOtd: number; lastShipDate: string }>;
       lastShipDate: string; regions: Set<string>;
       unpaidAmount: number; payDays: number[];
-      shipDates: string[];
+           shipDates: string[];
+      all: ComputedLoad[];
     }>();
 
     regionLoads.forEach(l => {
@@ -213,11 +217,12 @@ export default function CarrierScorecardView() {
           latePickup: 0, lateDelivery: 0,
           activeLanes: new Set(), laneLoads: new Map(),
           lastShipDate: '', regions: new Set(),
-          unpaidAmount: 0, payDays: [], shipDates: [],
+          unpaidAmount: 0, payDays: [], shipDates: [], all: [],
         };
         carrierMap.set(key, e);
       }
       e.loads++;
+      e.all.push(l);
       if (l.revenue != null) e.revenue += l.revenue;
       if (l.carrierCost != null) e.cost += l.carrierCost;
 
@@ -298,7 +303,7 @@ export default function CarrierScorecardView() {
 
       rows.push({
         name: e.name, loads: e.loads, revenue: e.revenue, cost: e.cost,
-        profit, margin, avgCost, otpPct, otdPct,
+        profit, margin, avgCost, otpPct, otdPct, otd: summarizeOtd(e.all),
         latePickup: e.latePickup, lateDelivery: e.lateDelivery,
         activeLanes: e.activeLanes.size, grade, flags, lanes,
         lastShipDate: e.lastShipDate, costDelta, costDeltaPct,
@@ -334,6 +339,7 @@ export default function CarrierScorecardView() {
         case 'margin': av = a.margin; bv = b.margin; break;
         case 'otp': av = a.otpPct ?? -1; bv = b.otpPct ?? -1; break;
         case 'otd': av = a.otdPct ?? -1; bv = b.otdPct ?? -1; break;
+        case 'rawOtd': av = a.otd.rawPct ?? -1; bv = b.otd.rawPct ?? -1; break;
         case 'grade': av = a.grade; bv = b.grade; break;
         case 'late': av = a.lateDelivery; bv = b.lateDelivery; break;
         case 'activeLanes': av = a.activeLanes; bv = b.activeLanes; break;
@@ -466,7 +472,8 @@ export default function CarrierScorecardView() {
                   {!shareView && <SortTh k="avgCost" label="Avg Cost" align="right" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} w="95px" />}
                   {!shareView && <SortTh k="margin" label="Margin" align="right" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} w="75px" />}
                   <SortTh k="otp" label="OTP %" align="right" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} w="70px" />
-                  <SortTh k="otd" label="OTD %" align="right" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} w="70px" />
+                  <SortTh k="otd" label="True OTD %" align="right" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} w="85px" />
+                  <SortTh k="rawOtd" label="Raw OTD %" align="right" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} w="85px" />
                   <SortTh k="late" label="Late" align="right" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} w="55px" />
                   {!shareView && <th className="px-4 py-3 text-right w-[95px]">Cost vs Mkt</th>}
                   {!shareView && <th className="px-4 py-3 text-left w-[160px]">Flags</th>}
@@ -474,7 +481,7 @@ export default function CarrierScorecardView() {
               </thead>
               <tbody>
                 {sorted.map((c, i) => {
-                  const colSpan = shareView ? 7 : 12;
+                  const colSpan = shareView ? 8 : 13;
                   return (
                     <>
                       <tr
@@ -500,6 +507,12 @@ export default function CarrierScorecardView() {
                         </td>
                         <td className={`px-4 py-3 text-right font-mono font-medium ${c.otdPct == null ? 'text-muted-foreground' : c.otdPct >= 95 ? 'text-success' : c.otdPct >= 90 ? 'text-warning' : 'text-destructive'}`}>
                           {c.otdPct != null ? `${c.otdPct.toFixed(0)}%` : '—'}
+                        </td>
+                        <td
+                          className="px-4 py-3 text-right font-mono text-muted-foreground"
+                          title={`${c.otd.excludedShipper} shipper + ${c.otd.excludedCustomer} customer delays excused in True OTD`}
+                        >
+                          {c.otd.rawPct != null ? `${c.otd.rawPct.toFixed(0)}%` : '—'}
                         </td>
                         <td className="px-4 py-3 text-right font-mono text-destructive">{c.lateDelivery}</td>
                         {!shareView && (
@@ -584,16 +597,19 @@ function ShareableDetail({ c }: { c: CarrierRow }) {
           <div className={`text-sm font-bold font-mono ${otpColor(c.otpPct)}`}>{c.otpPct != null ? `${c.otpPct.toFixed(1)}%` : 'N/A'}</div>
         </div>
         <div className="bg-card border border-border rounded-md px-3 py-2">
-          <div className="text-[10px] text-muted-foreground">On-Time Delivery</div>
+          <div className="text-[10px] text-muted-foreground">True On-Time Delivery</div>
           <div className={`text-sm font-bold font-mono ${otpColor(c.otdPct)}`}>{c.otdPct != null ? `${c.otdPct.toFixed(1)}%` : 'N/A'}</div>
         </div>
-        <MiniCard label="Claims" value="N/A" />
+        <div className="bg-card border border-border rounded-md px-3 py-2" title="Arrival vs. the original appointment — nothing excused">
+          <div className="text-[10px] text-muted-foreground">Raw On-Time Delivery</div>
+          <div className="text-sm font-bold font-mono text-muted-foreground">{c.otd.rawPct != null ? `${c.otd.rawPct.toFixed(1)}%` : 'N/A'}</div>
+        </div>
         <MiniCard label="Pickup Changes" value={c.loads > 0 ? `${((c.latePickup / c.loads) * 100).toFixed(1)}%` : '0%'} />
       </div>
 
       {/* Issue Breakdown */}
       <div className="text-xs font-semibold text-muted-foreground">Issue Breakdown</div>
-      <div className="text-xs text-muted-foreground italic">No classified issues available for this carrier</div>
+      <DelayBreakdown otd={c.otd} />
 
       {/* Top Lanes with activity status */}
       {c.lanes.length > 0 && (
@@ -799,4 +815,18 @@ function SortTh({ k, label, align, sortKey, sortDir, onSort, w }: {
 function LaneSortIcon({ k, laneSortKey, laneSortDir }: { k: LaneSortKey; laneSortKey: LaneSortKey; laneSortDir: SortDir }) {
   if (laneSortKey !== k) return <ArrowUpDown className="w-3 h-3 ml-1 opacity-40" />;
   return laneSortDir === 'asc' ? <ArrowUp className="w-3 h-3 ml-1" /> : <ArrowDown className="w-3 h-3 ml-1" />;
+}
+
+/** Late deliveries split by who caused them (ticket 13). */
+function DelayBreakdown({ otd }: { otd: OtdSummary }) {
+  if (otd.carrierLate + otd.excludedShipper + otd.excludedCustomer === 0) {
+    return <div className="text-xs text-muted-foreground italic">No late or rescheduled deliveries in this period</div>;
+  }
+  return (
+    <div className="grid grid-cols-3 gap-3">
+      <MiniCard label="Carrier fault (scored)" value={otd.carrierLate.toString()} />
+      <MiniCard label="Shipper fault (excused)" value={otd.excludedShipper.toString()} />
+      <MiniCard label="Customer fault (excused)" value={otd.excludedCustomer.toString()} />
+    </div>
+  );
 }

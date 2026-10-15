@@ -1,3 +1,5 @@
+import type { DelayFault, DelayFaultSource } from '@/lib/delayReasons';
+
 export type OnTimeStatus = 'On Time' | 'Late' | 'Excluded' | 'Unknown';
 
 /** Why a delivery appointment moved (set by the Turvo sync; Turvo stores no reason, so it is inferred). */
@@ -47,6 +49,8 @@ export interface Load {
   minutesLate?: number;
   toReview?: boolean;
   serviceSource?: 'turvo' | 'csv';
+    /** Structured delay reason from Turvo (ticket 14). The sync copies the field/task/comment text here. */
+  delayReason?: string;
 
   // --- Finance fields from the Turvo sync (turvo-mcp-server/loads_sync.py) ---
   turvoId?: number;
@@ -69,6 +73,12 @@ export interface ComputedLoad extends Load {
   hiddenLate: boolean;
   onTimeDeliveryRaw: OnTimeStatus;
   excludedFromOnTime: boolean;
+    /** Raw actuals: arrival vs. the original appointment, nothing excused. */
+  onTimeDeliveryActual: OnTimeStatus;
+  /** Who caused the delay/reschedule (null = on time and not rescheduled). */
+  delayFault: DelayFault | null;
+  /** 'turvo' = from the structured Turvo field; 'inferred' = guessed by the sync. */
+  delayFaultSource: DelayFaultSource | null;
 }
 
 export interface DataQuality {

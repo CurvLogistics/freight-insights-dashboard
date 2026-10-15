@@ -131,7 +131,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 <SelectItem value="rolling7">Rolling 7</SelectItem>
                 <SelectItem value="rolling30">Rolling 30</SelectItem>
                 <SelectItem value="rolling90">Rolling 90</SelectItem>
-              <SelectItem value="mtd">MTD</SelectItem>tickets.test.ts:
+                <SelectItem value="mtd">MTD</SelectItem>
                 <SelectItem value="qtd">QTD</SelectItem>
                 <SelectItem value="ytd">YTD</SelectItem>
                 <SelectItem value="custom">Custom</SelectItem>
