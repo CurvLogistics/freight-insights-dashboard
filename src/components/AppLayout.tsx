@@ -3,8 +3,9 @@ import { ViewType } from '@/types/loads';
 import { LayoutDashboard, Truck, MapPin, Users, AlertTriangle, Upload, Search, UserCheck, Building2, Lightbulb, Settings, X, Wallet } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useRef } from 'react';
+import { useMemo, useRef } from 'react';
 import AskClaude from '@/components/AskClaude';
+import { isActiveLoad } from '@/lib/computeLoads';
 import DateInputUS from '@/components/DateInputUS';
 
 const navItems: { id: ViewType; label: string; icon: React.ElementType }[] = [
@@ -32,11 +33,22 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     resetFilters, filtersActive,
   } = useData();
 
+  // Same base as "Total Loads in Dataset": canceled/draft loads are synced but excluded from every metric.
+  const activeCount = useMemo(() => rawLoads.filter(isActiveLoad).length, [rawLoads]);
+  const inactiveCount = rawLoads.length - activeCount;
+  const fmtN = (n: number) => n.toLocaleString('en-US');
+
   const sourceLabel =
   dataLoading ? 'Loading…' :
-  dataSource === 'turvo' ? `Turvo · ${rawLoads.length.toLocaleString('en-US')} loads` :
-  dataSource === 'csv' ? `CSV import · ${rawLoads.length.toLocaleString('en-US')} loads` :
+  dataSource === 'turvo' ? `Turvo · ${fmtN(activeCount)} loads` :
+  dataSource === 'csv' ? `CSV import · ${fmtN(activeCount)} loads` :
   'No data, open Settings';
+
+  const sourceTitle = dataError ?? (
+    rawLoads.length
+      ? `${fmtN(activeCount)} active loads (${fmtN(rawLoads.length)} synced, ${fmtN(inactiveCount)} canceled/draft excluded). Click to refresh.`
+      : 'Refresh data'
+  );
 
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -63,7 +75,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <p className="text-xs text-sidebar-foreground/50 mt-1">Logistics Intelligence</p>
           <button
             type="button"
-            title={dataError ?? 'Refresh data'}
+            title={sourceTitle}
            onClick={() => void refreshLoads()}
             className={`mt-2 w-full text-left text-[11px] leading-snug rounded px-2 py-1.5 transition-colors ${
               dataSource === 'turvo'

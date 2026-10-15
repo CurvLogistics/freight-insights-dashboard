@@ -23,7 +23,7 @@ interface EnrichedRow extends ComparisonRow {
   loadsDelta: number;
   revenueDelta: number;
   profitDelta: number;
-  marginDelta: number;
+  marginDelta: number | null;
   section: 'lost' | 'declining' | 'growing';
   flags: string[];
 }
@@ -52,7 +52,7 @@ function classifyRow(r: { loadsCur: number; loadsPrev: number; loadsDelta: numbe
 function getFlags(r: EnrichedRow): string[] {
   const flags: string[] = [];
   if (r.loadsPrev > 0 && r.loadsCur === 0) flags.push('Lost Volume');
-  if (r.marginDelta < -2) flags.push('Margin Compression');
+  if (r.marginDelta != null && r.marginDelta < -2) flags.push('Margin Compression');
   if (r.profitDelta < 0 && r.loadsCur > 0) flags.push('Profit Down');
   return flags;
 }
@@ -82,7 +82,7 @@ export default function ComparisonRankTable({ title, data, maxRows = 50, onRowCl
       const loadsDelta = r.loadsCur - r.loadsPrev;
       const revenueDelta = r.revenueCur - r.revenuePrev;
       const profitDelta = r.profitCur - r.profitPrev;
-      const marginDelta = r.marginCur - r.marginPrev;
+      const marginDelta = r.loadsCur > 0 && r.loadsPrev > 0 ? r.marginCur - r.marginPrev : null;
       const base: EnrichedRow = { ...r, loadsDelta, revenueDelta, profitDelta, marginDelta, section: 'growing', flags: [] };
       base.section = classifyRow(base);
       base.flags = getFlags(base);
@@ -270,11 +270,11 @@ export default function ComparisonRankTable({ title, data, maxRows = 50, onRowCl
                       {r.profitDelta >= 0 ? '+' : ''}{fmt(r.profitDelta)}
                     </td>
                     {/* Margin */}
-                    <td className="px-2 py-2 text-right font-mono border-l border-border/30">{pct(r.marginCur)}</td>
-                    <td className="px-2 py-2 text-right font-mono text-muted-foreground">{pct(r.marginPrev)}</td>
-                    <td className={`px-2 py-2 text-right font-mono font-semibold ${deltaColor(r.marginDelta)}`}>
-                      {r.marginDelta >= 0 ? '+' : ''}{r.marginDelta.toFixed(1)}
-                    </td>
+                    <td className="px-2 py-2 text-right font-mono border-l border-border/30">{r.loadsCur > 0 ? pct(r.marginCur) : '—'}</td>
+                    <td className="px-2 py-2 text-right font-mono text-muted-foreground">{r.loadsPrev > 0 ? pct(r.marginPrev) : '—'}</td>
+                    <td className={`px-2 py-2 text-right font-mono font-semibold ${r.marginDelta == null ? 'text-muted-foreground' : deltaColor(r.marginDelta)}`}>
+                      {r.marginDelta == null ? '—' : `${r.marginDelta >= 0 ? '+' : ''}${r.marginDelta.toFixed(1)}`}
+                    </td> 
                   </tr>
                 );
                 return rows;
