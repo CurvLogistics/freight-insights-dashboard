@@ -54,10 +54,12 @@ function storeOwner(v: string) {
 interface LaneComparison {
   name: string;
   loads: number;
+  loadsPrev: number;
   avgCostCur: number;
   avgCostPrev: number;
-  costDelta: number;
-  costDeltaPct: number;
+  /** null = no loads in the prior period, so there is nothing to compare (shown as "New"). */
+  costDelta: number | null;
+  costDeltaPct: number | null;
   revenueCur: number;
   costCur: number;
   marginCur: number;
@@ -129,15 +131,19 @@ export default function BusinessIntelligence() {
       const avgCostCur = cl.length > 0 ? cCost / cl.length : 0;
       const avgCostPrev = pl.length > 0 ? pCost / pl.length : 0;
       const costD = delta(avgCostCur, avgCostPrev);
+      const comparable = cl.length > 0 && pl.length > 0;
 
+      // Only lanes moving freight now get actions — a lane with 0 current loads has no
+      // current margin, so it used to read as 0.0% and falsely trigger every alert.
       const actions: string[] = [];
-      if (costD.abs > 0 && pl.length > 0) actions.push('Recruit carriers');
-      if (marginCur < marginPrev && pl.length > 0) actions.push('Renegotiate buy rates');
-      if (marginCur < FLOOR_TARGET) actions.push('Raise quote target');
+      if (comparable && costD.abs > 0) actions.push('Recruit carriers');
+      if (comparable && marginCur < marginPrev) actions.push('Renegotiate buy rates');
+      if (cl.length > 0 && marginCur < FLOOR_TARGET) actions.push('Raise quote target');
 
       lanes.push({
-        name, loads: cl.length,
-        avgCostCur, avgCostPrev, costDelta: costD.abs, costDeltaPct: costD.pct,
+        name, loads: cl.length, loadsPrev: pl.length,
+        avgCostCur, avgCostPrev,
+        costDelta: comparable ? costD.abs : null, costDeltaPct: comparable ? costD.pct : null,
         revenueCur: cRev, costCur: cCost, marginCur, marginPrev, marginDelta: marginCur - marginPrev,
         actions,
       });
@@ -179,9 +185,14 @@ export default function BusinessIntelligence() {
 
   const { cur, prv, lanes, interpretations, modeLabel, hasPrev } = data;
 
-  const costMovement = [...lanes].filter(l => l.avgCostPrev > 0 || l.avgCostCur > 0).sort((a, b) => b.costDelta - a.costDelta).slice(0, 10);
-  const marginCompression = [...lanes].filter(l => l.marginPrev !== 0 || l.marginCur !== 0).sort((a, b) => a.marginDelta - b.marginDelta).slice(0, 10);
-  const actionNeeded = lanes.filter(l => l.actions.length > 0 && (l.loads >= 10 || (l.loads === 0 && (l.avgCostPrev > 0)))).sort((a, b) => a.marginCur - b.marginCur).slice(0, 15);
+  // Lanes with current loads only; lanes new this period (no prior loads) sort after real comparisons and show "New".
+  const costMovement = [...lanes]
+    .filter(l => l.loads > 0)
+    .sort((a, b) => (b.costDelta ?? -Infinity) - (a.costDelta ?? -Infinity) || b.loads - a.loads)
+    .slice(0, 10);
+  // Margin compression needs a margin in both periods.
+  const marginCompression = [...lanes].filter(l => l.loads > 0 && l.loadsPrev > 0).sort((a, b) => a.marginDelta - b.marginDelta).slice(0, 10);
+  const actionNeeded = lanes.filter(l => l.actions.length > 0 && l.loads >= 10).sort((a, b) => a.marginCur - b.marginCur).slice(0, 15);
 
   const colorCls = (v: number, invert = false) => {
     const positive = invert ? v < 0 : v > 0;
@@ -252,13 +263,19 @@ export default function BusinessIntelligence() {
                       <TableCell className="text-xs font-medium max-w-[200px] truncate" title={l.name}>{l.name}</TableCell>
                       <TableCell className="text-xs text-right font-mono">{l.loads}</TableCell>
                       <TableCell className="text-xs text-right font-mono">{fmt(l.avgCostCur)}</TableCell>
-                      <TableCell className="text-xs text-right font-mono">{fmt(l.avgCostPrev)}</TableCell>
-                      <TableCell className={`text-xs text-right font-mono ${colorCls(l.costDelta, true)}`}>
-                        {l.costDelta >= 0 ? '+' : ''}{fmt(l.costDelta)}
-                      </TableCell>
-                      <TableCell className={`text-xs text-right font-mono ${colorCls(l.costDeltaPct, true)}`}>
-                        {l.costDeltaPct >= 0 ? '+' : ''}{l.costDeltaPct.toFixed(1)}%
-                      </TableCell>
+                      <TableCell className="text-xs text-right font-mono">{l.loadsPrev > 0 ? fmt(l.avgCostPrev) : '—'}</TableCell>
+                      {l.costDelta == null || l.costDeltaPct == null ? (
+                        <TableCell colSpan={2} className="text-xs text-right text-muted-foreground" title="No loads on this lane in the comparison period">New</TableCell>
+                      ) : (
+                        <>
+                          <TableCell className={`text-xs text-right font-mono ${colorCls(l.costDelta, true)}`}>
+                            {l.costDelta >= 0 ? '+' : ''}{fmt(l.costDelta)}
+                          </TableCell>
+                          <TableCell className={`text-xs text-right font-mono ${colorCls(l.costDeltaPct, true)}`}>
+                            {l.costDeltaPct >= 0 ? '+' : ''}{l.costDeltaPct.toFixed(1)}%
+                          </TableCell>
+                        </>
+                      )}
                     </TableRow>
                   ))}
                 </TableBody>

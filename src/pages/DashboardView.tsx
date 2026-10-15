@@ -159,6 +159,11 @@ export default function DashboardView() {
     teamMap.set(t, e);
   });
   const teamData = [...teamMap.entries()].map(([name, v]) => ({ name, ...v }));
+  // Start the axis at $0 unless a team has a meaningfully negative profit; a tiny loss
+  // (e.g. -$169) made Recharts pick a "nice" floor of about -$1M.
+  const teamMaxRevenue = Math.max(0, ...teamData.map(t => t.revenue));
+  const teamMinProfit = Math.min(0, ...teamData.map(t => t.profit));
+  const teamAxisMin = teamMinProfit < -0.05 * teamMaxRevenue ? 'auto' : 0;
 
   const hasCompleteFinancials = (l: { revenue: number; hasAnyCost: boolean }) =>
     l.revenue > 0 && l.hasAnyCost;
@@ -240,7 +245,13 @@ export default function DashboardView() {
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-        <KPICard title="Total Loads in Dataset" value={rawLoads.length.toString()} icon={Package} color="primary" />
+        <KPICard
+          title="Total Loads in Dataset"
+          value={dq.totalLoads.toLocaleString('en-US')}
+          icon={Package}
+          color="primary"
+          tip={`Active loads, all dates. Excludes ${(rawLoads.length - dq.totalLoads).toLocaleString('en-US')} canceled/draft loads (${rawLoads.length.toLocaleString('en-US')} synced in total) — same base as Data Quality.`}
+        />
         <KPICard title="Filtered Loads" value={totalLoads.toString()} icon={Package} color="primary"
           comparison={prevPeriodMetrics ? { current: totalLoads, previous: prevPeriodMetrics.loads } : undefined} isCount compLabel={prevPeriodMetrics?.modeLabel} />
         <KPICard title="Total Revenue" value={fmt(totalRevenue)} icon={DollarSign} color="primary"
@@ -308,7 +319,7 @@ export default function DashboardView() {
               <BarChart data={teamData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(220,15%,90%)" />
                 <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} tickFormatter={v => `$${(v/1000).toFixed(0)}k`} />
+                <YAxis tick={{ fontSize: 11 }} tickFormatter={v => `$${(v/1000).toFixed(0)}k`} domain={[teamAxisMin, 'auto']} allowDataOverflow={teamAxisMin === 0} />
                 <Tooltip formatter={(v: number) => fmt(v)} />
                 <Bar dataKey="revenue" fill="hsl(220,70%,45%)" radius={[4, 4, 0, 0]} />
                 <Bar dataKey="profit" fill="hsl(170,60%,42%)" radius={[4, 4, 0, 0]} />
