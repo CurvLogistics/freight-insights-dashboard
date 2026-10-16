@@ -1,4 +1,5 @@
 import type { ComputedLoad } from '@/types/loads';
+import { hasFinancials, finRev, finCost } from '@/lib/computeLoads';
 
 export interface DrillRow {
   name: string;
@@ -12,13 +13,14 @@ export interface DrillRow {
 }
 
 function group(loads: ComputedLoad[], key: (l: ComputedLoad) => string, limit: number): DrillRow[] {
-  const m = new Map<string, { loads: number; revenue: number; cost: number }>();
+const m = new Map<string, { loads: number; fin: number; revenue: number; cost: number }>();
   loads.forEach(l => {
     const k = key(l);
-    const e = m.get(k) || { loads: 0, revenue: 0, cost: 0 };
+    const e = m.get(k) || { loads: 0, fin: 0, revenue: 0, cost: 0 };
     e.loads++;
-    e.revenue += l.revenue || 0;
-    e.cost += l.carrierCost || 0;
+    if (hasFinancials(l)) e.fin++;
+    e.revenue += finRev(l);
+    e.cost += finCost(l);
     m.set(k, e);
   });
   return [...m.entries()]
@@ -27,8 +29,8 @@ function group(loads: ComputedLoad[], key: (l: ComputedLoad) => string, limit: n
       return {
         name, loads: v.loads, revenue: v.revenue, cost: v.cost, profit,
         margin: v.revenue > 0 ? (profit / v.revenue) * 100 : 0,
-        avgRevenue: v.revenue / v.loads,
-        avgCost: v.cost / v.loads,
+        avgRevenue: v.revenue / (v.fin || 1),
+        avgCost: v.cost / (v.fin || 1),
       };
     })
     .sort((a, b) => b.loads - a.loads || b.profit - a.profit)

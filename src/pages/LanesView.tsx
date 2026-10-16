@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Search, AlertTriangle, TrendingDown, ArrowUpDown, ArrowUp, ArrowDown, MapPin, Filter, ChevronDown, ChevronRight, Truck, Info } from 'lucide-react';
-import { computeLoad, isActiveLoad } from '@/lib/computeLoads';
+import { computeLoad, isActiveLoad, hasFinancials, finRev, finCost } from '@/lib/computeLoads';
 import { getComparisonWindow } from '@/lib/comparison';
 import InfoTip from '@/components/InfoTip';
 import { DataTrustBadge } from '@/components/DataTrust';
@@ -559,8 +559,9 @@ export default function LanesView() {
 
     const buildComp = (entry: LaneEntry, matchType: CompResult['matchType']): CompResult => {
       const sorted = [...entry.loads].sort((a, b) => getShipmentDate(b).localeCompare(getShipmentDate(a)));
-      const totalRev = entry.loads.reduce((s, l) => s + (l.revenue ?? 0), 0);
-      const totalCost = entry.loads.reduce((s, l) => s + (l.carrierCost ?? 0), 0);
+      const totalRev = entry.loads.reduce((s, l) => s + finRev(l), 0);
+      const totalCost = entry.loads.reduce((s, l) => s + finCost(l), 0);
+      const finCount = entry.loads.filter(hasFinancials).length;
       const mostRecent = sorted[0];
       const lastShipDate = mostRecent ? getShipmentDate(mostRecent) : '';
       const lastShipMs = parseDateOnly(lastShipDate);
@@ -571,8 +572,8 @@ export default function LanesView() {
         matchType,
         equipment: entry.equipment,
         totalLoads: entry.loads.length,
-        avgCost: entry.loads.length > 0 ? totalCost / entry.loads.length : 0,
-        avgRevenue: entry.loads.length > 0 ? totalRev / entry.loads.length : 0,
+        avgCost: finCount > 0 ? totalCost / finCount : 0,
+        avgRevenue: finCount > 0 ? totalRev / finCount : 0,
         avgMargin: totalRev > 0 ? ((totalRev - totalCost) / totalRev) * 100 : 0,
         lastShipped: lastShipDate,
         lastCost: mostRecent?.carrierCost ?? null,

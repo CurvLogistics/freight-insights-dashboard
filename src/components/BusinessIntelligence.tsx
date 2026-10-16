@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Activity, TrendingDown, Target, AlertTriangle } from 'lucide-react';
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '@/components/ui/table';
 import { Load } from '@/types/loads';
-import { isActiveLoad } from '@/lib/computeLoads';
+import { isActiveLoad, hasFinancials, finRev, finCost } from '@/lib/computeLoads';
 import { getComparisonWindow, inRange } from '@/lib/comparison';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { laneKey, buildLaneVolatility, FLOOR_TARGET, STRETCH_TARGET } from '@/lib/laneVolatility';
@@ -35,11 +35,12 @@ interface PeriodAgg {
 }
 
 function aggregatePeriod(loads: Load[]): PeriodAgg {
-  const revenue = loads.reduce((s, l) => s + (l.revenue || 0), 0);
-  const cost = loads.reduce((s, l) => s + (l.carrierCost || 0), 0);
+  const revenue = loads.reduce((s, l) => s + finRev(l), 0);
+  const cost = loads.reduce((s, l) => s + finCost(l), 0);
   const profit = revenue - cost;
   const margin = revenue > 0 ? (profit / revenue) * 100 : 0;
-  const avgCost = loads.length > 0 ? cost / loads.length : 0;
+  const finCount = loads.filter(hasFinancials).length;
+  const avgCost = finCount > 0 ? cost / finCount : 0;
   return { loads, totalLoads: loads.length, revenue, cost, profit, margin, avgCost };
 }
 
@@ -121,15 +122,17 @@ export default function BusinessIntelligence() {
       // Include lane if it has at least 1 load in either period
       if (cl.length === 0 && pl.length === 0) return;
 
-      const cRev = cl.reduce((s, l) => s + (l.revenue || 0), 0);
-      const cCost = cl.reduce((s, l) => s + (l.carrierCost || 0), 0);
-      const pRev = pl.reduce((s, l) => s + (l.revenue || 0), 0);
-      const pCost = pl.reduce((s, l) => s + (l.carrierCost || 0), 0);
+      const cRev = cl.reduce((s, l) => s + finRev(l), 0);
+      const cCost = cl.reduce((s, l) => s + finCost(l), 0);
+      const pRev = pl.reduce((s, l) => s + finRev(l), 0);
+      const pCost = pl.reduce((s, l) => s + finCost(l), 0);
+      const cFin = cl.filter(hasFinancials).length;
+      const pFin = pl.filter(hasFinancials).length;
 
       const marginCur = cRev > 0 ? ((cRev - cCost) / cRev) * 100 : 0;
       const marginPrev = pRev > 0 ? ((pRev - pCost) / pRev) * 100 : 0;
-      const avgCostCur = cl.length > 0 ? cCost / cl.length : 0;
-      const avgCostPrev = pl.length > 0 ? pCost / pl.length : 0;
+      const avgCostCur = cFin > 0 ? cCost / cFin : 0;
+      const avgCostPrev = pFin > 0 ? pCost / pFin : 0;
       const costD = delta(avgCostCur, avgCostPrev);
       const comparable = cl.length > 0 && pl.length > 0;
 
@@ -191,7 +194,8 @@ export default function BusinessIntelligence() {
     .sort((a, b) => (b.costDelta ?? -Infinity) - (a.costDelta ?? -Infinity) || b.loads - a.loads)
     .slice(0, 10);
   // Margin compression needs a margin in both periods.
-  const marginCompression = [...lanes].filter(l => l.loads > 0 && l.loadsPrev > 0).sort((a, b) => a.marginDelta - b.marginDelta).slice(0, 10);
+  const MIN_COMPRESSION_LOADS = 3;
+  const marginCompression = [...lanes].filter(l => l.loads >= MIN_COMPRESSION_LOADS && l.loadsPrev >= MIN_COMPRESSION_LOADS).sort((a, b) => a.marginDelta - b.marginDelta).slice(0, 10);
   const actionNeeded = lanes.filter(l => l.actions.length > 0 && l.loads >= 10).sort((a, b) => a.marginCur - b.marginCur).slice(0, 15);
 
   const colorCls = (v: number, invert = false) => {

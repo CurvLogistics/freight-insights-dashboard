@@ -9,7 +9,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import InteractiveRankTable from '@/components/InteractiveRankTable';
 import ComparisonRankTable, { ComparisonRow } from '@/components/ComparisonRankTable';
 import BusinessIntelligence from '@/components/BusinessIntelligence';
-import { computeLoad, isActiveLoad, DATA_QUALITY_CHECKS, getDataQualityLoads, type DataQualityIssue } from '@/lib/computeLoads';
+import { computeLoad, isActiveLoad, finRev, finCost, DATA_QUALITY_CHECKS, getDataQualityLoads, type DataQualityIssue } from '@/lib/computeLoads';
 import LoadListDrawer from '@/components/LoadListDrawer';
 import { getComparisonWindow, inRange } from '@/lib/comparison';
 import { formatUSShortDate } from '@/lib/dates';
@@ -40,9 +40,10 @@ export default function DashboardView() {
 
   const totalLoads = filteredLoads.length;
   const totalRevenue = filteredLoads.reduce((s, l) => s + (l.revenue || 0), 0);
-  const totalCost = filteredLoads.reduce((s, l) => s + (l.carrierCost || 0), 0);
-  const totalProfit = totalRevenue - totalCost;
-  const avgMargin = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
+  const finRevenue = filteredLoads.reduce((s, l) => s + finRev(l), 0);
+  const totalCost = filteredLoads.reduce((s, l) => s + finCost(l), 0);
+  const totalProfit = finRevenue - totalCost;
+  const avgMargin = finRevenue > 0 ? (totalProfit / finRevenue) * 100 : 0;
 
   // Dataset date boundaries
   // Comparison window (prior period or same period last year) + whether we have data for it
@@ -77,9 +78,10 @@ export default function DashboardView() {
     }
     if (prev.length === 0) return null;
     const revenue = prev.reduce((s, l) => s + (l.revenue || 0), 0);
-    const cost = prev.reduce((s, l) => s + (l.carrierCost || 0), 0);
-    const profit = revenue - cost;
-    const margin = revenue > 0 ? (profit / revenue) * 100 : 0;
+    const finRevenuePrev = prev.reduce((s, l) => s + finRev(l), 0);
+    const cost = prev.reduce((s, l) => s + finCost(l), 0);
+    const profit = finRevenuePrev - cost;
+    const margin = finRevenuePrev > 0 ? (profit / finRevenuePrev) * 100 : 0;
     const modeLabel = comparisonMode === 'yoy' ? 'YoY' : 'vs prior';
     return { revenue, profit, margin, loads: prev.length, modeLabel };
   }, [prevLoads, dashFilter, comparisonMode]);
@@ -95,14 +97,14 @@ export default function DashboardView() {
     curData.forEach(l => {
       const k = keyFnCur(l);
       const e = curMap.get(k) || { loads: 0, revenue: 0, cost: 0 };
-      e.loads++; e.revenue += l.revenue || 0; e.cost += l.carrierCost || 0;
+      e.loads++; e.revenue += finRev(l); e.cost += finCost(l);
       curMap.set(k, e);
     });
     const prevMap = new Map<string, { loads: number; revenue: number; cost: number }>();
     prevData.forEach(l => {
       const k = keyFnPrev(l);
       const e = prevMap.get(k) || { loads: 0, revenue: 0, cost: 0 };
-      e.loads++; e.revenue += l.revenue || 0; e.cost += l.carrierCost || 0;
+      e.loads++; e.revenue += finRev(l); e.cost += finCost(l);
       prevMap.set(k, e);
     });
 
@@ -147,6 +149,9 @@ export default function DashboardView() {
     trendMap.set(d, entry);
   });
   const trendData = [...trendMap.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([date, v]) => ({ date: formatUSShortDate(date), ...v }));
+  const trendMaxRevenue = Math.max(0, ...trendData.map(t => t.revenue));
+  const trendMinProfit = Math.min(0, ...trendData.map(t => t.profit));
+  const trendAxisMin = trendMinProfit < -0.05 * trendMaxRevenue ? 'auto' : 0;
 
   // Team breakdown
   const teamMap = new Map<string, { loads: number; revenue: number; profit: number }>();
@@ -155,7 +160,7 @@ export default function DashboardView() {
     const e = teamMap.get(t) || { loads: 0, revenue: 0, profit: 0 };
     e.loads++;
     e.revenue += l.revenue || 0;
-    e.profit += (l.revenue || 0) - (l.carrierCost || 0);
+    e.profit += finRev(l) - finCost(l);
     teamMap.set(t, e);
   });
   const teamData = [...teamMap.entries()].map(([name, v]) => ({ name, ...v }));
@@ -174,8 +179,9 @@ export default function DashboardView() {
       const k = keyFn(l);
       const e = map.get(k) || { loads: 0, revenue: 0, cost: 0, hasAnyCost: false };
       e.loads++;
-      e.revenue += l.revenue || 0;
-      if (l.carrierCost != null) { e.cost += l.carrierCost; e.hasAnyCost = true; }
+      e.revenue += finRev(l);
+      e.cost += finCost(l);
+      if (l.revenue != null && l.carrierCost != null) e.hasAnyCost = true;
       map.set(k, e);
     });
     return [...map.entries()].map(([name, v]) => {
@@ -303,7 +309,7 @@ export default function DashboardView() {
               <LineChart data={trendData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(220,15%,90%)" />
                 <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} tickFormatter={v => `$${(v/1000).toFixed(0)}k`} />
+                 <YAxis tick={{ fontSize: 11 }} tickFormatter={v => `$${(v/1000).toFixed(0)}k`} domain={[trendAxisMin, 'auto']} allowDataOverflow={trendAxisMin === 0} />
                 <Tooltip formatter={(v: number) => fmt(v)} />
                 <Line type="monotone" dataKey="revenue" stroke="hsl(220,70%,45%)" strokeWidth={2} dot={{ r: 3 }} />
                 <Line type="monotone" dataKey="profit" stroke="hsl(170,60%,42%)" strokeWidth={2} dot={{ r: 3 }} />

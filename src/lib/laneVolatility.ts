@@ -1,4 +1,5 @@
 import type { Load } from '@/types/loads';
+import { hasFinancials, finRev, finCost } from '@/lib/computeLoads';
 
 export const FLOOR_TARGET = 8;
 export const STRETCH_TARGET = 12;
@@ -29,10 +30,11 @@ export function buildLaneVolatility(loads: Load[], owner: string, limit = 15): L
   });
   const rows: LaneVolatilityRow[] = [];
   byLane.forEach((ls, name) => {
-    const rev = ls.reduce((s, l) => s + (l.revenue || 0), 0);
-    const cost = ls.reduce((s, l) => s + (l.carrierCost || 0), 0);
-    const avgRevenue = rev / ls.length;
-    const avgCost = cost / ls.length;
+    const rev = ls.reduce((s, l) => s + finRev(l), 0);
+    const cost = ls.reduce((s, l) => s + finCost(l), 0);
+    const finCount = ls.filter(hasFinancials).length || 1;
+    const avgRevenue = rev / finCount;
+    const avgCost = cost / finCount;
     rows.push({
       name, loads: ls.length, avgRevenue, avgCost,
       avgMargin: avgRevenue > 0 ? ((avgRevenue - avgCost) / avgRevenue) * 100 : 0,

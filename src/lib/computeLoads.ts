@@ -83,6 +83,14 @@ export function isActiveLoad(l: Pick<Load, 'shipmentStatus'>): boolean {
 }
 
 /**
+ * Profit and margin only use loads that have BOTH revenue and carrier cost.
+ */
+type FinFields = Pick<Load, 'revenue' | 'carrierCost'>;
+export const hasFinancials = (l: FinFields): boolean => l.revenue != null && l.carrierCost != null;
+export const finRev = (l: FinFields): number => (hasFinancials(l) ? l.revenue! : 0);
+export const finCost = (l: FinFields): number => (hasFinancials(l) ? l.carrierCost! : 0);
+
+/**
  * Pickup is due (appointment has passed) but Turvo has no pickup arrival.
  * The sync always fills pickupDate from the appointment, so "!pickupDate" was never true
  * and Missing Pickup showed 0. CSV imports have no arrival field, so they keep the old check.

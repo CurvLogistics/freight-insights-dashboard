@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useData } from '@/context/DataContext';
-import { computeLoad, isActiveLoad } from '@/lib/computeLoads';
+import { computeLoad, isActiveLoad, finRev, finCost } from '@/lib/computeLoads';
 import { getComparisonWindow, inRange } from '@/lib/comparison';
 import { formatUSDate } from '@/lib/dates';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -64,15 +64,17 @@ export default function InsightsView() {
 
     const curCount = curLoads.length;
     const curRev = curLoads.reduce((s, l) => s + (l.revenue || 0), 0);
-    const curCost = curLoads.reduce((s, l) => s + (l.carrierCost || 0), 0);
-    const curProfit = curRev - curCost;
-    const curMargin = curRev > 0 ? (curProfit / curRev) * 100 : 0;
+    const curFinRev = curLoads.reduce((s, l) => s + finRev(l), 0);
+    const curCost = curLoads.reduce((s, l) => s + finCost(l), 0);
+    const curProfit = curFinRev - curCost;
+    const curMargin = curFinRev > 0 ? (curProfit / curFinRev) * 100 : 0;
 
     const prevCount = prevLoads.length;
     const prevRev = prevLoads.reduce((s, l) => s + (l.revenue || 0), 0);
-    const prevCost = prevLoads.reduce((s, l) => s + (l.carrierCost || 0), 0);
-    const prevProfit = prevRev - prevCost;
-    const prevMargin = prevRev > 0 ? (prevProfit / prevRev) * 100 : 0;
+    const prevFinRev = prevLoads.reduce((s, l) => s + finRev(l), 0);
+    const prevCost = prevLoads.reduce((s, l) => s + finCost(l), 0);
+    const prevProfit = prevFinRev - prevCost;
+    const prevMargin = prevFinRev > 0 ? (prevProfit / prevFinRev) * 100 : 0;
 
     const dLoads = curCount - prevCount;
     const dRev = curRev - prevRev;
@@ -84,7 +86,7 @@ export default function InsightsView() {
     curLoads.forEach(l => {
       const name = l.customerName || 'Unknown';
       const e = custMap.get(name) || { rev: 0, cost: 0, loads: 0 };
-      e.rev += l.revenue || 0; e.cost += l.carrierCost || 0; e.loads++;
+      e.rev += finRev(l); e.cost += finCost(l); e.loads++;
       custMap.set(name, e);
     });
     const topCusts = [...custMap.entries()]
@@ -96,13 +98,13 @@ export default function InsightsView() {
     curLoads.forEach(l => {
       const key = l.lane || 'Unknown';
       const e = laneMap.get(key) || { curRev: 0, curCost: 0, curLoads: 0, prevRev: 0, prevCost: 0, prevLoads: 0 };
-      e.curRev += l.revenue || 0; e.curCost += l.carrierCost || 0; e.curLoads++;
+      e.curRev += finRev(l); e.curCost += finCost(l); e.curLoads++;
       laneMap.set(key, e);
     });
     prevLoads.forEach(l => {
       const key = l.lane || 'Unknown';
       const e = laneMap.get(key) || { curRev: 0, curCost: 0, curLoads: 0, prevRev: 0, prevCost: 0, prevLoads: 0 };
-      e.prevRev += l.revenue || 0; e.prevCost += l.carrierCost || 0; e.prevLoads++;
+      e.prevRev += finRev(l); e.prevCost += finCost(l); e.prevLoads++;
       laneMap.set(key, e);
     });
     const lanes = [...laneMap.entries()].map(([lane, d]) => {
