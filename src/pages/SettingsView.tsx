@@ -3,11 +3,12 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 import { Button } from '@/components/ui/button';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { useData } from '@/context/DataContext';
-import { triggerSync, importHistoricalLoads, getAdminToken, setAdminToken, AdminAuthError } from '@/lib/loadsRepository';
-import { Input } from '@/components/ui/input';
+import { useAuth } from '@clerk/react';
+import { triggerSync, importHistoricalLoads } from '@/lib/loadsRepository';
+import { useRole } from '@/auth/useRole';
 import { parseCSV } from '@/lib/computeLoads';
 import { getDatasetBounds } from '@/lib/comparison';
-import { Loader2, AlertTriangle, RefreshCw, Download, Database, History, Upload, Lock, Unlock } from 'lucide-react';
+import { Loader2, AlertTriangle, RefreshCw, Download, Database, History, Upload } from 'lucide-react';
 import { formatUSDate, formatUSDateTime } from '@/lib/dates';
 
 const sourceLabels = {
@@ -16,40 +17,9 @@ const sourceLabels = {
   none: 'No data yet',
 } as const;
 
-/** Sync and import change shared data, so they're admin-only until logins land (ticket 15). */
-function AdminAccessCard({ isAdmin, onChange }: { isAdmin: boolean; onChange: (v: boolean) => void }) {
-  const [token, setToken] = useState('');
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-lg flex items-center gap-2">
-          {isAdmin ? <Unlock className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
-          Admin access
-        </CardTitle>
-        <CardDescription>
-          {isAdmin
-            ? 'Admin tools are unlocked in this browser tab.'
-            : 'Turvo sync and data import are limited to admins. Enter the admin token to unlock them.'}
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        {isAdmin ? (
-          <Button variant="outline" size="sm" onClick={() => { setAdminToken(''); onChange(false); }}>Lock</Button>
-        ) : (
-          <form
-            className="flex gap-2 max-w-md"
-            onSubmit={e => { e.preventDefault(); if (!token.trim()) return; setAdminToken(token.trim()); setToken(''); onChange(true); }}
-          >
-            <Input type="password" value={token} onChange={e => setToken(e.target.value)} placeholder="Admin token" autoComplete="off" />
-            <Button type="submit" size="sm" disabled={!token.trim()}>Unlock</Button>
-          </form>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function TurvoSyncCard({ isAdmin, onAuthError }: { isAdmin: boolean; onAuthError: () => void }) {
+/** Sync and import change shared data, so only users with the Clerk "admin" role see them (the server checks it too). */
+function TurvoSyncCard({ isAdmin }: { isAdmin: boolean }) {
+  const { getToken } = useAuth();
   const { dataSource, dataLoading, dataError, rawLoads, lastSyncedAt, refreshLoads } = useData();
   const [syncing, setSyncing] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -59,10 +29,9 @@ function TurvoSyncCard({ isAdmin, onAuthError }: { isAdmin: boolean; onAuthError
     setSyncing(true);
     setMessage(null);
     try {
-      await triggerSync(days);
+      await triggerSync(getToken, days);
       setMessage(`Sync of the last ${days} days started. It usually takes a few minutes${days > 45 ? ' (longer for 180 days)' : ''}. Click Refresh afterwards to load the new data.`);
     } catch (err) {
-      if (err instanceof AdminAuthError) onAuthError();
       setMessage(err instanceof Error ? err.message : 'Sync failed to start');
     } finally {
       setSyncing(false);
@@ -134,6 +103,7 @@ function TurvoSyncCard({ isAdmin, onAuthError }: { isAdmin: boolean; onAuthError
 }
 
 function HistoryImportCard() {
+  const { getToken } = useAuth();
   const { rawLoads, refreshLoads } = useData();
   const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
@@ -146,7 +116,7 @@ function HistoryImportCard() {
     try {
       const parsed = parseCSV(await file.text()).filter(l => !l.loadId.startsWith('AUTO-'));
       if (parsed.length === 0) throw new Error('No loads found. Check the file has a Load / Shipment ID column.');
-      const { added, skipped } = await importHistoricalLoads(parsed, (d, t) => setMessage(`Uploading ${d.toLocaleString('en-US')} / ${t.toLocaleString('en-US')}…`));
+      const { added, skipped } = await importHistoricalLoads(getToken, parsed, (d, t) => setMessage(`Uploading ${d.toLocaleString('en-US')} / ${t.toLocaleString('en-US')}…`));
       setMessage(`Added ${added.toLocaleString('en-US')} historical loads (${skipped.toLocaleString('en-US')} already synced from Turvo were kept as-is).`);
       await refreshLoads();
     } catch (err) {
@@ -199,15 +169,14 @@ function HistoryImportCard() {
 const SHOW_CSV_IMPORT = false;
 
 const SettingsView = () => {
-  const [isAdmin, setIsAdmin] = useState(() => !!getAdminToken());
+  const { isAdmin } = useRole();
   return (
     <div className="p-6 space-y-6 max-w-4xl">
       <div>
         <h2 className="text-2xl font-bold">Settings</h2>
         <p className="text-sm text-muted-foreground">Manage integrations and data connections</p>
       </div>
-      <AdminAccessCard isAdmin={isAdmin} onChange={setIsAdmin} />
-      <TurvoSyncCard isAdmin={isAdmin} onAuthError={() => setIsAdmin(false)} />
+      <TurvoSyncCard isAdmin={isAdmin} />
       {SHOW_CSV_IMPORT && isAdmin && <HistoryImportCard />}
     </div>
   );

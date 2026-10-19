@@ -1,9 +1,14 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { requireAdmin } from './_adminAuth.js';
+import { requireUser, requireRole, AuthError } from './_lib/auth.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Use POST' });
-  if (!requireAdmin(req, res)) return;
+  try {
+    requireRole(await requireUser(req), ['admin']);
+  } catch (err) {
+    if (err instanceof AuthError) return res.status(err.status).json({ error: err.message });
+    throw err;
+  }
   const base = process.env.TURVO_SYNC_URL;
   const token = process.env.LOADS_API_TOKEN;
   if (!base || !token) {

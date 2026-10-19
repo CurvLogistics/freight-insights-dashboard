@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useMemo, useCallback, useEffect } from 'react';
 import { Load, ComputedLoad, DataQuality, ViewType } from '@/types/loads';
 import { computeLoad, computeDataQuality, parseCSV, isActiveLoad } from '@/lib/computeLoads';
+import { useAuth } from '@clerk/react';
 import { fetchLoadsFromApi } from '@/lib/loadsRepository';
 
 export type ComparisonMode = 'prior' | 'yoy';
@@ -96,6 +97,7 @@ const defaultFilters: Filters = {
 };
 
 export function DataProvider({ children }: { children: React.ReactNode }) {
+  const { getToken } = useAuth();
   const [rawLoads, setRawLoads] = useState<Load[]>([]);
   const [dataSource, setDataSource] = useState<DataSource>('none');  const [dataLoading, setDataLoading] = useState(true);
   const [dataError, setDataError] = useState<string | null>(null);
@@ -111,7 +113,7 @@ const refreshLoads = useCallback(async () => {
   setDataLoading(true);
   setDataError(null);
   try {
-    const { loads: apiLoads, lastSyncedAt: synced } = await fetchLoadsFromApi();
+    const { loads: apiLoads, lastSyncedAt: synced } = await fetchLoadsFromApi(getToken);
     setRawLoads(apiLoads);
     setDataSource(apiLoads.length > 0 ? 'turvo' : 'none');
     setLastSyncedAt(synced);
@@ -125,7 +127,7 @@ const refreshLoads = useCallback(async () => {
   } finally {
     setDataLoading(false);
   }
-}, []);
+}, [getToken]);
 
   useEffect(() => {
     void refreshLoads();

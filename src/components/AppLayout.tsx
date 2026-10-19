@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useMemo, useRef } from 'react';
 import AskClaude from '@/components/AskClaude';
+import { useRole } from '@/auth/useRole';
 import { isActiveLoad } from '@/lib/computeLoads';
 import DateInputUS from '@/components/DateInputUS';
 
@@ -25,6 +26,7 @@ const navItems: { id: ViewType; label: string; icon: React.ElementType }[] = [
 const SHOW_CSV_IMPORT = false;
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
+  const { canSeeAll } = useRole();
   const {
     currentView, setCurrentView, filters, setFilters, importCSV,
     teams, equipmentTypes, comparisonMode, setComparisonMode,
@@ -223,7 +225,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         </div>
       </main>
 
-      <AskClaude />
+      {/* Admin + management only for now */}
+      {canSeeAll && <AskClaude />}
     </div>
   );
 }

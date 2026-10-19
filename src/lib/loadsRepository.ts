@@ -1,25 +1,24 @@
 import type { Load } from '@/types/loads';
 
-const ADMIN_TOKEN_KEY = 'freightops.adminToken';
-
-/** Admin token entered in Settings. Kept for this browser tab only (sessionStorage). */
-export function getAdminToken(): string {
-  try { return sessionStorage.getItem(ADMIN_TOKEN_KEY) || ''; } catch { return ''; }
-}
-export function setAdminToken(token: string): void {
-  try {
-    if (token) sessionStorage.setItem(ADMIN_TOKEN_KEY, token);
-    else sessionStorage.removeItem(ADMIN_TOKEN_KEY);
-  } catch { /* storage blocked: admin has to re-enter the token */ }
-}
-
-/** Thrown when the server rejects the admin token, so the UI can lock again. */
+/** Thrown when the server refuses an admin action (signed out, or not an admin). */
 export class AdminAuthError extends Error {}
 
+/** Returns the signed-in user's Clerk session token (Clerk's `getToken`). Tokens are short-lived, so fetch one per request. */
+export type GetSessionToken = () => Promise<string | null>;
+
+/**
+ * The server checks the user's role from this token. It goes in its own header because
+ * `Authorization` carries the site-wide Basic login (middleware.ts) — overwriting it fails that check.
+ */
+async function authHeader(getToken: GetSessionToken): Promise<Record<string, string>> {
+  const token = await getToken();
+  return token ? { 'X-Clerk-Session': token } : {};
+}
+
 async function checkAdminResponse(res: Response): Promise<void> {
-  if (res.status === 403) {
-    setAdminToken('');
-    throw new AdminAuthError('Admin token is wrong or expired. Enter it again in Settings.');
+  if (res.status === 401 || res.status === 403) {
+    const { error } = await res.json().catch(() => ({ error: '' }));
+    throw new AdminAuthError(error || 'Admin access required.');
   }
 }
 
@@ -28,17 +27,21 @@ export interface LoadsResponse {
   lastSyncedAt: string | null;
 }
 
-export async function fetchLoadsFromApi(): Promise<LoadsResponse> {
-  const res = await fetch('/api/loads', { cache: 'no-store' });
-  if (!res.ok) throw new Error(`Loads API error ${res.status}`);
+/** Returns only the loads the signed-in user may see (the server filters by role / broker). */
+export async function fetchLoadsFromApi(getToken: GetSessionToken): Promise<LoadsResponse> {
+  const res = await fetch('/api/loads', { cache: 'no-store', headers: await authHeader(getToken) });
+  if (!res.ok) {
+    const { error } = await res.json().catch(() => ({ error: '' }));
+    throw new Error(error || `Loads API error ${res.status}`);
+  }
   const data = await res.json();
   return { loads: data.loads ?? [], lastSyncedAt: data.lastSyncedAt ?? null };
 }
 
-export async function triggerSync(days = 45): Promise<void> {
+export async function triggerSync(getToken: GetSessionToken, days = 45): Promise<void> {
   const res = await fetch(`/api/sync?days=${days}`, {
     method: 'POST',
-    headers: { 'x-admin-token': getAdminToken() },
+    headers: await authHeader(getToken),
   });
   await checkAdminResponse(res);
   if (!res.ok && res.status !== 409) throw new Error(`Sync error ${res.status}`);
@@ -50,6 +53,7 @@ export async function triggerSync(days = 45): Promise<void> {
  * overwritten — the server only adds load IDs it doesn't have yet.
  */
 export async function importHistoricalLoads(
+  getToken: GetSessionToken,
   loads: Load[],
   onProgress?: (done: number, total: number) => void,
 ): Promise<{ added: number; skipped: number }> {
@@ -58,7 +62,7 @@ export async function importHistoricalLoads(
   for (let i = 0; i < loads.length; i += BATCH) {
     const res = await fetch('/api/import', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-admin-token': getAdminToken() },
+      headers: { 'Content-Type': 'application/json', ...(await authHeader(getToken)) },
       body: JSON.stringify({ loads: loads.slice(i, i + BATCH) }),
     });
     await checkAdminResponse(res);
