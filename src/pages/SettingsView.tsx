@@ -6,6 +6,7 @@ import { useData } from '@/context/DataContext';
 import { useAuth } from '@clerk/react';
 import { triggerSync, importHistoricalLoads } from '@/lib/loadsRepository';
 import { useRole } from '@/auth/useRole';
+import UsersRolesCard from '@/components/UsersRolesCard';
 import { parseCSV } from '@/lib/computeLoads';
 import { getDatasetBounds } from '@/lib/comparison';
 import { Loader2, AlertTriangle, RefreshCw, Download, Database, History, Upload } from 'lucide-react';
@@ -177,6 +178,7 @@ const SettingsView = () => {
         <p className="text-sm text-muted-foreground">Manage integrations and data connections</p>
       </div>
       <TurvoSyncCard isAdmin={isAdmin} />
+      {isAdmin && <UsersRolesCard />}
       {SHOW_CSV_IMPORT && isAdmin && <HistoryImportCard />}
     </div>
   );

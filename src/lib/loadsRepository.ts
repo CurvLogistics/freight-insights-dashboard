@@ -10,7 +10,7 @@ export type GetSessionToken = () => Promise<string | null>;
  * The server checks the user's role from this token. It goes in its own header because
  * `Authorization` carries the site-wide Basic login (middleware.ts) — overwriting it fails that check.
  */
-async function authHeader(getToken: GetSessionToken): Promise<Record<string, string>> {
+export async function authHeader(getToken: GetSessionToken): Promise<Record<string, string>> {
   const token = await getToken();
   return token ? { 'X-Clerk-Session': token } : {};
 }
