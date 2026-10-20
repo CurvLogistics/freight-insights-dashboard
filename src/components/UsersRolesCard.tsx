@@ -5,9 +5,13 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '@/components/ui/table';
-import { Loader2, RefreshCw, Users } from 'lucide-react';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
+import { Loader2, RefreshCw, Trash2, Users } from 'lucide-react';
 import { useData } from '@/context/DataContext';
-import { listUsers, setUserRole, type AssignableRole, type DashboardUser } from '@/lib/usersApi';
+import { listUsers, setUserRole, removeUser, type AssignableRole, type DashboardUser } from '@/lib/usersApi';
 
 const ROLE_LABELS: Record<AssignableRole, string> = {
   none: 'No access',
@@ -82,7 +86,7 @@ export default function UsersRolesCard() {
                   <TableHead className="text-xs">Joined</TableHead>
                   <TableHead className="text-xs w-[160px]">Role</TableHead>
                   <TableHead className="text-xs w-[220px]">Broker</TableHead>
-                  <TableHead className="text-xs w-[90px]" />
+                  <TableHead className="text-xs w-[130px]" />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -110,6 +114,18 @@ function UserRow({ user, brokers, onSaved }: { user: DashboardUser; brokers: str
   const canSave = dirty && (role !== 'user' || !!broker);
   // Keep a broker name that's no longer in the current data selectable
   const brokerOptions = broker && !brokers.includes(broker) ? [broker, ...brokers] : brokers;
+
+  const remove = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      await removeUser(getToken, user.id);
+      await onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not remove');
+      setSaving(false);
+    }
+  };
 
   const save = async () => {
     setSaving(true);
@@ -154,11 +170,35 @@ function UserRow({ user, brokers, onSaved }: { user: DashboardUser; brokers: str
           <span className="text-xs text-muted-foreground">{role === 'none' ? '—' : 'All loads'}</span>
         )}
       </TableCell>
-      <TableCell className="text-right">
+      <TableCell className="text-right whitespace-nowrap space-x-1">
         {dirty && (
           <Button size="sm" className="h-8" onClick={() => void save()} disabled={!canSave || saving}>
             {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Save'}
           </Button>
+        )}
+        {!user.isMe && (
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive" disabled={saving} title="Remove user">
+                <Trash2 className="w-3.5 h-3.5" />
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Remove {user.email}?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Their account is deleted and they're signed out right away. To come back they'd have to sign up again
+                  and be given a role. This can't be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={() => void remove()} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                  Remove user
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         )}
       </TableCell>
     </TableRow>

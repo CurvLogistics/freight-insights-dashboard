@@ -39,3 +39,12 @@ export async function setUserRole(
   });
   if (!res.ok) throw await errorFrom(res);
 }
+
+/** Admin only: deletes the user's account (they'd have to sign up again to get back in). */
+export async function removeUser(getToken: GetSessionToken, userId: string): Promise<void> {
+  const res = await fetch(`/api/users?userId=${encodeURIComponent(userId)}`, {
+    method: 'DELETE',
+    headers: await authHeader(getToken),
+  });
+  if (!res.ok) throw await errorFrom(res);
+}

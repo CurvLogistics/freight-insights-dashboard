@@ -7,8 +7,9 @@ type AssignableRole = Role | 'none';
 const ROLES: AssignableRole[] = ['none', 'user', 'management', 'admin'];
 
 /**
- * Admin-only: list everyone who has signed up (GET) and set a user's role / broker (POST).
- * Doesn't create or invite accounts — people sign up themselves, an admin then grants access.
+ * Admin-only: list everyone who has signed up (GET), set a user's role / broker (POST) and
+ * remove a user (DELETE). Doesn't create or invite accounts — people sign up themselves,
+ * an admin then grants access.
  */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
@@ -58,7 +59,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ ok: true });
     }
 
-    return res.status(405).json({ error: 'Use GET or POST' });
+    if (req.method === 'DELETE') {
+      const userId = typeof req.query.userId === 'string' ? req.query.userId : '';
+      if (!userId) return res.status(400).json({ error: 'userId is required' });
+      if (userId === me.userId) return res.status(400).json({ error: "You can't remove your own account" });
+      // Deletes the Clerk account and ends their sessions; they'd have to sign up again
+      await clerk.users.deleteUser(userId);
+      return res.status(200).json({ ok: true });
+    }
+
+    return res.status(405).json({ error: 'Use GET, POST or DELETE' });
   } catch (err) {
     if (err instanceof AuthError) return res.status(err.status).json({ error: err.message });
     return res.status(500).json({ error: err instanceof Error ? err.message : 'Server error' });
