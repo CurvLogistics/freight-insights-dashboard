@@ -1,11 +1,10 @@
 import type { Load } from '@/types/loads';
-import { hasFinancials, finRev, finCost } from '@/lib/computeLoads';
+import { hasFinancials, finRev, finCost, laneOf } from '@/lib/computeLoads';
 
 export const FLOOR_TARGET = 8;
 export const STRETCH_TARGET = 12;
 
-export const laneKey = (l: Load) =>
-  `${l.originCity || '?'}, ${l.originState || '?'} → ${l.destinationCity || '?'}, ${l.destinationState || '?'}`;
+export const laneKey = laneOf;
 
 export interface LaneVolatilityRow {
   name: string;
@@ -18,13 +17,12 @@ export interface LaneVolatilityRow {
 }
 
 /**
- * Lane Volatility (formerly Quote Guidance): per-lane averages for one account owner's
- * own loads, used for daily quoting. `owner` = the load's broker / account owner.
+ * Lane Volatility (formerly Quote Guidance): per-lane averages, used for daily quoting.
+ * Loads arrive already filtered (including the global account-owner filter).
  */
-export function buildLaneVolatility(loads: Load[], owner: string, limit = 15): LaneVolatilityRow[] {
+export function buildLaneVolatility(loads: Load[], limit = 15): LaneVolatilityRow[] {
   const byLane = new Map<string, Load[]>();
   loads.forEach(l => {
-    if ((l.broker || '') !== owner) return;
     const k = laneKey(l);
     (byLane.get(k) || (byLane.set(k, []), byLane.get(k)!)).push(l);
   });

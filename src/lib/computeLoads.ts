@@ -26,13 +26,22 @@ export const isScored = (s?: OnTimeStatus) => s === 'On Time' || s === 'Late';
     return Math.abs(load.appointmentShiftHours ?? Infinity) >= ON_TIME_RULES.minShiftHours;
 }
 
+const titleCase = (s?: string) => (s ?? '').trim().replace(/\s+/g, ' ').toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+const upper = (s?: string) => (s ?? '').trim().toUpperCase();
+/** One lane name everywhere, so "RIO RICO, az" and "Rio Rico, AZ" are the same lane. */
+export function laneOf(l: Pick<Load, 'originCity' | 'originState' | 'destinationCity' | 'destinationState'>): string {
+  const o = [titleCase(l.originCity), upper(l.originState)].filter(Boolean).join(', ') || '?';
+  const d = [titleCase(l.destinationCity), upper(l.destinationState)].filter(Boolean).join(', ') || '?';
+  return `${o} → ${d}`;
+}
+/** laneOf() for a load with no origin or destination at all. */
+export const UNKNOWN_LANE = '? → ?';
+
 export function computeLoad(load: Load): ComputedLoad {
   const grossProfit = (load.revenue != null && load.carrierCost != null) ? load.revenue - load.carrierCost : undefined;
   const marginPercent = (grossProfit != null && load.revenue && load.revenue > 0) ? (grossProfit / load.revenue) * 100 : undefined;
 
-  const origin = [load.originCity, load.originState].filter(Boolean).join(', ');
-  const dest = [load.destinationCity, load.destinationState].filter(Boolean).join(', ');
-  const lane = origin && dest ? `${origin} → ${dest}` : origin || dest || 'Unknown';
+  const lane = laneOf(load);
 
   const originSt = load.originState || '?';
   const destSt = load.destinationState || '?';

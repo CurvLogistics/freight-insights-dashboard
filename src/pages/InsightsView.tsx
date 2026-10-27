@@ -1,7 +1,6 @@
 import { useMemo } from 'react';
 import { useData } from '@/context/DataContext';
-import { computeLoad, isActiveLoad, finRev, finCost } from '@/lib/computeLoads';
-import { getComparisonWindow, inRange } from '@/lib/comparison';
+import { finRev, finCost } from '@/lib/computeLoads';
 import { formatUSDate } from '@/lib/dates';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -38,29 +37,14 @@ function cleanCustomer(raw: string) {
 }
 
 export default function InsightsView() {
-  const { loads, rawLoads, filters, comparisonMode, timeframePreset, viewMode } = useData();
+  const { loads, prevLoads: prevPeriodLoads, compWindow: comp, filters, comparisonMode, timeframePreset } = useData();
 
   const insights = useMemo(() => {
-    const { dateRange } = filters;
     const curLoads = loads;
 
-    const comp = getComparisonWindow(dateRange, comparisonMode, rawLoads);
     const hasComp = comp.covered && !!comp.range;
     const vsLabel = comparisonMode === 'yoy' ? 'vs last year' : 'vs prior period';
-    let prevFiltered = hasComp ? rawLoads.filter(isActiveLoad) : [];
-    if (filters.team !== 'all') prevFiltered = prevFiltered.filter(l => l.team === filters.team);
-    if (filters.equipmentType !== 'all') prevFiltered = prevFiltered.filter(l => l.equipmentType === filters.equipmentType);
-    if (filters.search) {
-      const s = filters.search.toLowerCase();
-      prevFiltered = prevFiltered.filter(l =>
-        [l.loadId, l.customerName, l.carrierName, l.broker, l.originCity, l.originState, l.destinationCity, l.destinationState]
-          .some(v => v?.toLowerCase().includes(s))
-      );
-    }
-    if (hasComp) prevFiltered = prevFiltered.filter(l => inRange(l, comp.range!));
-
-    let prevLoads = prevFiltered.map(computeLoad);
-    if (viewMode === 'locked') prevLoads = prevLoads.filter(l => l.simpleStatus === 'Locked');
+    const prevLoads = prevPeriodLoads;
 
     const curCount = curLoads.length;
     const curRev = curLoads.reduce((s, l) => s + (l.revenue || 0), 0);
@@ -172,12 +156,13 @@ export default function InsightsView() {
     warnings.push('Service metrics limited — missing appointment data');
 
     return { curCount, curRev, curProfit, curMargin, dLoads, dRev, dProfit, dMargin, biggestIssue, highlights, actions, warnings, hasComp };
-  }, [loads, rawLoads, filters, comparisonMode, viewMode]);
+  }, [loads, prevPeriodLoads, comp, comparisonMode]);
 
   const presetLabels: Record<string, string> = { rolling7: 'Rolling 7', rolling30: 'Rolling 30', mtd: 'MTD', qtd: 'QTD', ytd: 'YTD', custom: 'Custom' };
   const compLabels: Record<string, string> = { prior: 'vs Prior', yoy: 'vs YoY' };
   const ctx = [presetLabels[timeframePreset] || 'Custom', compLabels[comparisonMode] || 'vs Prior'];
-  if (filters.team !== 'all') ctx.push(filters.team);
+  if (filters.owner !== 'all') ctx.push(filters.owner);
+  if (filters.excludedTeams.length > 0) ctx.push(`Excl. ${filters.excludedTeams.join(', ')}`);
   if (filters.equipmentType !== 'all') ctx.push(filters.equipmentType);
 
     const Delta = ({ val, display }: { val: number; display: string }) => !insights.hasComp ? null : (

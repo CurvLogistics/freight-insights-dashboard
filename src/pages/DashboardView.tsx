@@ -5,14 +5,15 @@ import { TrendingUp, TrendingDown, DollarSign, Package, BarChart3, AlertCircle, 
 import InfoTip from '@/components/InfoTip';
 import { DataTrustBadge, DataWarnings } from '@/components/DataTrust';
 import type { TrustLevel } from '@/components/DataTrust';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, LabelList } from 'recharts';
 import InteractiveRankTable from '@/components/InteractiveRankTable';
 import ComparisonRankTable, { ComparisonRow } from '@/components/ComparisonRankTable';
 import BusinessIntelligence from '@/components/BusinessIntelligence';
-import { computeLoad, isActiveLoad, finRev, finCost, DATA_QUALITY_CHECKS, getDataQualityLoads, type DataQualityIssue } from '@/lib/computeLoads';
+import { finRev, finCost, DATA_QUALITY_CHECKS, getDataQualityLoads, type DataQualityIssue } from '@/lib/computeLoads';
 import LoadListDrawer from '@/components/LoadListDrawer';
-import { getComparisonWindow, inRange } from '@/lib/comparison';
+import { aggregate, groupBy, shipDate, teamOf } from '@/lib/filters';
 import { formatUSShortDate } from '@/lib/dates';
+
 
 const fmt = (n?: number) => n != null ? `$${Math.round(n).toLocaleString('en-US')}` : '—';
 const pct = (n?: number) => n != null ? `${n.toFixed(1)}%` : '—';
@@ -26,7 +27,7 @@ const fmtCompact = (n: number) => {
 const SHOW_BROKER_COMPARISON = false;
 
 export default function DashboardView() {
-  const { loads, rawLoads, dataQuality, filters, comparisonMode, viewMode } = useData();
+  const { loads, prevLoads, compWindow, rawLoads, dataQuality, comparisonMode, viewMode } = useData();
   const [dashFilter, setDashFilter] = useState<{ type: 'customer' | 'broker' | 'lane'; value: string } | null>(null);
 
   const filteredLoads = dashFilter
@@ -38,31 +39,8 @@ export default function DashboardView() {
       })
     : loads;
 
-  const totalLoads = filteredLoads.length;
-  const totalRevenue = filteredLoads.reduce((s, l) => s + (l.revenue || 0), 0);
-  const finRevenue = filteredLoads.reduce((s, l) => s + finRev(l), 0);
-  const totalCost = filteredLoads.reduce((s, l) => s + finCost(l), 0);
-  const totalProfit = finRevenue - totalCost;
-  const avgMargin = finRevenue > 0 ? (totalProfit / finRevenue) * 100 : 0;
-
-  // Dataset date boundaries
-  // Comparison window (prior period or same period last year) + whether we have data for it
-  const compWindow = useMemo(
-    () => getComparisonWindow(filters.dateRange, comparisonMode, rawLoads),
-    [filters.dateRange, comparisonMode, rawLoads],
-  );
-
-  // Prev period loads (computed, filtered same as current). Empty when the window isn't fully synced.
-  const prevLoads = useMemo(() => {
-    if (!compWindow.covered || !compWindow.range) return [];
-    const range = compWindow.range;
-    return rawLoads.filter(l => {
-      if (!isActiveLoad(l)) return false;
-      if (filters.team !== 'all' && l.team !== filters.team) return false;
-      if (filters.equipmentType !== 'all' && l.equipmentType !== filters.equipmentType) return false;
-      return inRange(l, range);
-    }).map(computeLoad).filter(l => viewMode === 'booked' || l.simpleStatus === 'Locked');
-  }, [rawLoads, compWindow, filters.team, filters.equipmentType, viewMode]);
+  const cur = aggregate(filteredLoads);
+  const totalLoads = cur.loads, totalRevenue = cur.revenue, totalProfit = cur.profit, avgMargin = cur.margin;
 
   // Comparison period KPI metrics
   const prevPeriodMetrics = useMemo(() => {
@@ -77,13 +55,9 @@ export default function DashboardView() {
       });
     }
     if (prev.length === 0) return null;
-    const revenue = prev.reduce((s, l) => s + (l.revenue || 0), 0);
-    const finRevenuePrev = prev.reduce((s, l) => s + finRev(l), 0);
-    const cost = prev.reduce((s, l) => s + finCost(l), 0);
-    const profit = finRevenuePrev - cost;
-    const margin = finRevenuePrev > 0 ? (profit / finRevenuePrev) * 100 : 0;
+    const a = aggregate(prev);
     const modeLabel = comparisonMode === 'yoy' ? 'YoY' : 'vs prior';
-    return { revenue, profit, margin, loads: prev.length, modeLabel };
+    return { revenue: a.revenue, profit: a.profit, margin: a.margin, loads: a.loads, modeLabel };
   }, [prevLoads, dashFilter, comparisonMode]);
 
   // Build comparison rows for entities
@@ -139,61 +113,34 @@ export default function DashboardView() {
   [hasPrev, loads, prevLoads, buildComparisonRows]);
 
   // Revenue trend
-  const trendMap = new Map<string, { revenue: number; profit: number }>();
-  filteredLoads.forEach(l => {
-    const d = (l.pickupDate || l.deliveryDate || '')?.slice(0, 10);
-    if (!d) return;
-    const entry = trendMap.get(d) || { revenue: 0, profit: 0 };
-    entry.revenue += l.revenue || 0;
-    entry.profit += (l.grossProfit || 0);
-    trendMap.set(d, entry);
-  });
-  const trendData = [...trendMap.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([date, v]) => ({ date: formatUSShortDate(date), ...v }));
+  const trendData = [...groupBy(filteredLoads.filter(l => shipDate(l)), l => shipDate(l)).entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([date, ls]) => {
+      const a = aggregate(ls);
+      return { date: formatUSShortDate(date), revenue: a.revenue, profit: a.profit, margin: a.finRevenue > 0 ? a.margin : null };
+    });
   const trendMaxRevenue = Math.max(0, ...trendData.map(t => t.revenue));
   const trendMinProfit = Math.min(0, ...trendData.map(t => t.profit));
   const trendAxisMin = trendMinProfit < -0.05 * trendMaxRevenue ? 'auto' : 0;
 
-  // Team breakdown
-  const teamMap = new Map<string, { loads: number; revenue: number; profit: number }>();
-  filteredLoads.forEach(l => {
-    const t = l.team || l.broker || 'Unassigned';
-    const e = teamMap.get(t) || { loads: 0, revenue: 0, profit: 0 };
-    e.loads++;
-    e.revenue += l.revenue || 0;
-    e.profit += finRev(l) - finCost(l);
-    teamMap.set(t, e);
-  });
-  const teamData = [...teamMap.entries()].map(([name, v]) => ({ name, ...v }));
+  // Team breakdown (team only, no broker fallback)
+  const teamData = [...groupBy(filteredLoads, l => teamOf(l)).entries()]
+    .map(([name, ls]) => { const a = aggregate(ls); return { name, loads: a.loads, revenue: a.revenue, profit: a.profit, margin: a.margin }; })
+    .sort((a, b) => b.revenue - a.revenue);
   // Start the axis at $0 unless a team has a meaningfully negative profit; a tiny loss
   // (e.g. -$169) made Recharts pick a "nice" floor of about -$1M.
   const teamMaxRevenue = Math.max(0, ...teamData.map(t => t.revenue));
   const teamMinProfit = Math.min(0, ...teamData.map(t => t.profit));
   const teamAxisMin = teamMinProfit < -0.05 * teamMaxRevenue ? 'auto' : 0;
 
-  const hasCompleteFinancials = (l: { revenue: number; hasAnyCost: boolean }) =>
-    l.revenue > 0 && l.hasAnyCost;
+  const rankBy = (keyFn: (l: typeof loads[0]) => string) =>
+    [...groupBy(loads, keyFn).entries()]
+      .map(([name, ls]) => { const a = aggregate(ls); return { name, loads: a.loads, revenue: a.finRevenue, cost: a.cost, profit: a.profit, margin: a.margin, hasAnyCost: a.finLoads > 0 }; })
+      .filter(r => r.loads >= 10 && r.revenue > 0 && r.hasAnyCost);
 
-  const aggregate = (keyFn: (l: typeof loads[0]) => string) => {
-    const map = new Map<string, { loads: number; revenue: number; cost: number; hasAnyCost: boolean }>();
-    loads.forEach(l => {
-      const k = keyFn(l);
-      const e = map.get(k) || { loads: 0, revenue: 0, cost: 0, hasAnyCost: false };
-      e.loads++;
-      e.revenue += finRev(l);
-      e.cost += finCost(l);
-      if (l.revenue != null && l.carrierCost != null) e.hasAnyCost = true;
-      map.set(k, e);
-    });
-    return [...map.entries()].map(([name, v]) => {
-      const profit = v.revenue - v.cost;
-      const margin = v.revenue > 0 ? (profit / v.revenue) * 100 : 0;
-      return { name, loads: v.loads, revenue: v.revenue, cost: v.cost, profit, margin, hasAnyCost: v.hasAnyCost };
-    }).filter(r => r.loads >= 10 && hasCompleteFinancials(r));
-  };
-
-  const qualifiedCust = aggregate(l => l.customerName || 'Unknown');
-  const qualifiedBrokers = aggregate(l => l.broker || 'Unassigned');
-  const qualifiedLanes = aggregate(l => l.lane);
+  const qualifiedCust = rankBy(l => l.customerName || 'Unknown');
+  const qualifiedBrokers = rankBy(l => l.broker || 'Unassigned');
+  const qualifiedLanes = rankBy(l => l.lane);
 
   const handleRowClick = useCallback((type: 'customer' | 'broker' | 'lane') => (name: string) => {
     setDashFilter(prev => prev?.type === type && prev.value === name ? null : { type, value: name });
@@ -309,10 +256,12 @@ export default function DashboardView() {
               <LineChart data={trendData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(220,15%,90%)" />
                 <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-                 <YAxis tick={{ fontSize: 11 }} tickFormatter={v => `$${(v/1000).toFixed(0)}k`} domain={[trendAxisMin, 'auto']} allowDataOverflow={trendAxisMin === 0} />
-                <Tooltip formatter={(v: number) => fmt(v)} />
-                <Line type="monotone" dataKey="revenue" stroke="hsl(220,70%,45%)" strokeWidth={2} dot={{ r: 3 }} />
-                <Line type="monotone" dataKey="profit" stroke="hsl(170,60%,42%)" strokeWidth={2} dot={{ r: 3 }} />
+                <YAxis yAxisId="usd" tick={{ fontSize: 11 }} tickFormatter={v => `$${(v / 1000).toFixed(0)}k`} domain={[trendAxisMin, 'auto']} allowDataOverflow={trendAxisMin === 0} />
+                <YAxis yAxisId="pct" orientation="right" tick={{ fontSize: 11 }} tickFormatter={v => `${v}%`} domain={['auto', 'auto']} />
+                <Tooltip formatter={(v: number, name: string) => [name === 'Margin %' ? `${v.toFixed(1)}%` : fmt(v), name]} />
+                <Line yAxisId="usd" type="monotone" dataKey="revenue" name="Revenue" stroke="hsl(220,70%,45%)" strokeWidth={2} dot={{ r: 3 }} />
+                <Line yAxisId="usd" type="monotone" dataKey="profit" name="Profit" stroke="hsl(170,60%,42%)" strokeWidth={2} dot={{ r: 3 }} />
+                <Line yAxisId="pct" type="monotone" dataKey="margin" name="Margin %" stroke="hsl(35,90%,50%)" strokeWidth={1.5} strokeDasharray="4 3" dot={false} connectNulls />
               </LineChart>
             </ResponsiveContainer>
           </CardContent>
@@ -326,9 +275,12 @@ export default function DashboardView() {
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(220,15%,90%)" />
                 <XAxis dataKey="name" tick={{ fontSize: 11 }} />
                 <YAxis tick={{ fontSize: 11 }} tickFormatter={v => `$${(v/1000).toFixed(0)}k`} domain={[teamAxisMin, 'auto']} allowDataOverflow={teamAxisMin === 0} />
-                <Tooltip formatter={(v: number) => fmt(v)} />
-                <Bar dataKey="revenue" fill="hsl(220,70%,45%)" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="profit" fill="hsl(170,60%,42%)" radius={[4, 4, 0, 0]} />
+                <Tooltip formatter={(v: number, name: string, item) =>
+                  name === 'Profit' ? [`${fmt(v)} (${item.payload.margin.toFixed(1)}% margin)`, name] : [fmt(v), name]} />
+                <Bar dataKey="revenue" name="Revenue" fill="hsl(220,70%,45%)" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="profit" name="Profit" fill="hsl(170,60%,42%)" radius={[4, 4, 0, 0]}>
+                  <LabelList dataKey="margin" position="top" fontSize={10} formatter={(v: number) => `${v.toFixed(1)}%`} />
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </CardContent>

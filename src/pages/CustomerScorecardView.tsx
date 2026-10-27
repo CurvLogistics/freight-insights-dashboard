@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Search, ArrowUpDown, ArrowUp, ArrowDown, Filter, AlertTriangle, Eye, EyeOff } from 'lucide-react';
 import { ComputedLoad } from '@/types/loads';
-import { isScored } from '@/lib/computeLoads';
+import { isScored, UNKNOWN_LANE } from '@/lib/computeLoads';
 import { summarizeOtd, type OtdSummary } from '@/lib/delayReasons';
 import { DataTrustBadge, DataWarnings } from '@/components/DataTrust';
 
@@ -137,7 +137,7 @@ export default function CustomerScorecardView() {
         }
       }
 
-      if (l.lane && l.lane !== 'Unknown') {
+      if (l.lane && l.lane !== UNKNOWN_LANE) {
         e.activeLanes.add(l.lane);
         const le = e.laneLoads.get(l.lane) || { loads: 0, revenue: 0, cost: 0, lastShipDate: '' };
         le.loads++;

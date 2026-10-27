@@ -7,6 +7,7 @@ import { buildLaneVolatility } from '@/lib/laneVolatility';
 import { brokerDrilldown } from '@/lib/brokerDrilldown';
 import { summarizeCarriers, mostRecentCarrier } from '@/lib/laneCarriers';
 import { parseDelayReason, summarizeOtd } from '@/lib/delayReasons';
+import { matchesFilters, type Filters } from '@/lib/filters';
 
 const rescheduled = (extra: Partial<Load>): Load => ({
   loadId: 'T-1', serviceSource: 'turvo', shipmentStatus: 'Delivered',
@@ -62,15 +63,18 @@ describe('Lane Volatility', () => {
     { loadId: '2', broker: 'Ana', revenue: 2000, carrierCost: 1700, ...lane },
     { loadId: '3', broker: 'Ben', revenue: 5000, carrierCost: 1000, ...lane },
   ];
-  it('only includes the selected owner and reports load count', () => {
-    const rows = buildLaneVolatility(loads, 'Ana');
+  const ownerFilter = (owner: string): Filters =>
+    ({ dateRange: { start: '', end: '' }, excludedTeams: [], owner, equipmentType: 'all', search: '' });
+
+  it('averages the lane for the selected owner (global owner filter)', () => {
+    const rows = buildLaneVolatility(loads.filter(l => matchesFilters(l, ownerFilter('Ana'))));
     expect(rows).toHaveLength(1);
     expect(rows[0].loads).toBe(2);
     expect(rows[0].avgRevenue).toBe(1500);
     expect(rows[0].avgCost).toBe(1300);
   });
   it('returns nothing for an owner with no loads', () => {
-    expect(buildLaneVolatility(loads, 'Zoe')).toEqual([]);
+    expect(buildLaneVolatility(loads.filter(l => matchesFilters(l, ownerFilter('Zoe'))))).toEqual([]);
   });
 });
 

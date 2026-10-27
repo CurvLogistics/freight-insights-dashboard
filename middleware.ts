@@ -1,6 +1,8 @@
 export const config = { matcher: '/:path*' };
 
 export default function middleware(request: Request) {
+  // Vercel Cron can't send the site password; /api/cron/* checks CRON_SECRET itself
+  if (new URL(request.url).pathname.startsWith('/api/cron/')) return;
   const auth = request.headers.get('authorization');
   if (auth?.startsWith('Basic ')) {
     const [user, pass] = atob(auth.slice(6)).split(':');

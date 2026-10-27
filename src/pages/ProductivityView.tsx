@@ -5,6 +5,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '
 import InfoTip from '@/components/InfoTip';
 import { DataTrustBadge } from '@/components/DataTrust';
 import { brokerDrilldown, type DrillRow } from '@/lib/brokerDrilldown';
+import { aggregate, groupBy, ownerOf } from '@/lib/filters';
 
 const fmt = (n?: number) => n != null ? `$${Math.round(n).toLocaleString('en-US')}` : '—';
 const marginCls = (m: number) => (m >= 15 ? 'text-success' : m >= 10 ? 'text-warning' : 'text-destructive');
@@ -13,22 +14,8 @@ export default function ProductivityView() {
   const { loads } = useData();
   const [selected, setSelected] = useState<string | null>(null);
 
-  const brokerMap = new Map<string, { loads: number; revenue: number; cost: number; hasAnyCost: boolean }>();
-  loads.forEach(l => {
-    const b = l.broker || 'Unassigned';
-    const e = brokerMap.get(b) || { loads: 0, revenue: 0, cost: 0, hasAnyCost: false };
-    e.loads++;
-    e.revenue += l.revenue || 0;
-    if (l.carrierCost != null) { e.cost += l.carrierCost; e.hasAnyCost = true; }
-    brokerMap.set(b, e);
-  });
-
-  const data = [...brokerMap.entries()]
-    .map(([name, v]) => {
-      const profit = v.revenue - v.cost;
-      const margin = v.revenue > 0 ? (profit / v.revenue * 100) : 0;
-      return { name, loads: v.loads, revenue: v.revenue, profit, margin };
-    })
+  const data = [...groupBy(loads, l => ownerOf(l)).entries()]
+    .map(([name, ls]) => { const a = aggregate(ls); return { name, loads: a.loads, revenue: a.revenue, profit: a.profit, margin: a.margin }; })
     .sort((a, b) => b.revenue - a.revenue);
 
   const drill = useMemo(() => (selected ? brokerDrilldown(loads, selected) : null), [loads, selected]);

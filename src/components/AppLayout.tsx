@@ -8,6 +8,7 @@ import AskClaude from '@/components/AskClaude';
 import { useRole } from '@/auth/useRole';
 import { isActiveLoad } from '@/lib/computeLoads';
 import DateInputUS from '@/components/DateInputUS';
+import TeamFilter from '@/components/TeamFilter';
 
 const navItems: { id: ViewType; label: string; icon: React.ElementType }[] = [
   { id: 'dashboard', label: 'Executive Overview', icon: LayoutDashboard },
@@ -29,7 +30,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { canSeeAll } = useRole();
   const {
     currentView, setCurrentView, filters, setFilters, importCSV,
-    teams, equipmentTypes, comparisonMode, setComparisonMode,
+    teams, owners, equipmentTypes, comparisonMode, setComparisonMode,
     timeframePreset, setTimeframePreset, viewMode, setViewMode,
     dataSource, dataLoading, dataError, refreshLoads, rawLoads, importBusy,
     resetFilters, filtersActive,
@@ -189,14 +190,21 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               </SelectContent>
             </Select>
 
-            {/* Team */}
-            <Select value={filters.team} onValueChange={v => setFilters(f => ({ ...f, team: v }))}>
-              <SelectTrigger className="h-9 w-32 text-xs"><SelectValue placeholder="Team" /></SelectTrigger>
+            {/* Account owner: default whole team */}
+            <Select value={filters.owner} onValueChange={v => setFilters(f => ({ ...f, owner: v }))}>
+              <SelectTrigger className="h-9 w-40 text-xs"><SelectValue placeholder="Account owner" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Teams</SelectItem>
-                {teams.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                <SelectItem value="all">Whole team</SelectItem>
+                {owners.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}
               </SelectContent>
             </Select>
+
+            {/* Teams: include / exclude */}
+            <TeamFilter
+              teams={teams}
+              excluded={filters.excludedTeams}
+              onChange={excludedTeams => setFilters(f => ({ ...f, excludedTeams }))}
+            />
 
             {/* Equipment */}
             <Select value={filters.equipmentType} onValueChange={v => setFilters(f => ({ ...f, equipmentType: v }))}>

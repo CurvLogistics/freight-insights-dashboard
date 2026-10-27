@@ -5,8 +5,9 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Search, AlertTriangle, TrendingDown, ArrowUpDown, ArrowUp, ArrowDown, MapPin, Filter, ChevronDown, ChevronRight, Truck, Info } from 'lucide-react';
-import { computeLoad, isActiveLoad, hasFinancials, finRev, finCost } from '@/lib/computeLoads';
-import { getComparisonWindow } from '@/lib/comparison';
+import { hasFinancials, finRev, finCost } from '@/lib/computeLoads';
+import { selectLoads } from '@/lib/filters';
+import { Checkbox } from '@/components/ui/checkbox';
 import InfoTip from '@/components/InfoTip';
 import { DataTrustBadge } from '@/components/DataTrust';
 import { ComputedLoad, Load } from '@/types/loads';
@@ -46,6 +47,7 @@ type SortDir = 'asc' | 'desc';
 
 interface LanePeriodStats {
   loads: number;
+  finLoads: number;
   revenue: number;
   cost: number;
   lastShipDate: string;
@@ -56,6 +58,7 @@ interface LanePeriodStats {
 interface LaneAgg {
   lane: string;
   equipment: string;
+  equipSet: Set<string>;
   current: LanePeriodStats;
   prior: LanePeriodStats;
 }
@@ -151,24 +154,6 @@ function getShipmentDate(load: Pick<Load, 'pickupDate' | 'deliveryDate'>): strin
   return (load.pickupDate || load.deliveryDate || '').slice(0, 10);
 }
 
-function matchesGlobalSearch(load: Load, search: string): boolean {
-  const term = search.trim().toLowerCase();
-  if (!term) return true;
-  return [load.loadId, load.customerName, load.carrierName, load.broker, load.originCity, load.originState, load.destinationCity, load.destinationState]
-    .some((value) => value?.toLowerCase().includes(term));
-}
-
-function matchesPriorFilters(load: Load, filters: { team: string; equipmentType: string; search: string }, range: { start: string; end: string }): boolean {
-  if (filters.team !== 'all' && load.team !== filters.team) return false;
-  if (filters.equipmentType !== 'all' && load.equipmentType !== filters.equipmentType) return false;
-  if (!matchesGlobalSearch(load, filters.search)) return false;
-  const shipmentDate = getShipmentDate(load);
-  if (!shipmentDate) return false;
-  if (range.start && shipmentDate < range.start) return false;
-  if (range.end && shipmentDate > range.end) return false;
-  return true;
-}
-
 function getLaneIdentity(
   load: Pick<ComputedLoad, 'lane' | 'stateLane' | 'originCity' | 'originState' | 'destinationCity' | 'destinationState'>,
   level: LaneLevel
@@ -194,19 +179,15 @@ function getLaneIdentity(
 }
 
 function createEmptyPeriodStats(): LanePeriodStats {
-  return { loads: 0, revenue: 0, cost: 0, lastShipDate: '', lastCost: null, lastSell: null };
+  return { loads: 0, finLoads: 0, revenue: 0, cost: 0, lastShipDate: '', lastCost: null, lastSell: null };
 }
 
-function updatePeriodStats(stats: LanePeriodStats, load: Pick<ComputedLoad, 'pickupDate' | 'deliveryDate' | 'revenue' | 'carrierCost'>): void {
+/** Same profit/margin formula as every other page: only loads with both revenue and cost count. */
+function updatePeriodStats(stats: LanePeriodStats, load: ComputedLoad): void {
   stats.loads += 1;
-  stats.revenue += load.revenue ?? 0;
-  stats.cost += load.carrierCost ?? 0;
-  const shipmentDate = getShipmentDate(load);
-  if (shipmentDate && shipmentDate > stats.lastShipDate) {
-    stats.lastShipDate = shipmentDate;
-    stats.lastCost = load.carrierCost ?? null;
-    stats.lastSell = load.revenue ?? null;
-  }
+  if (hasFinancials(load)) { stats.finLoads += 1; stats.revenue += finRev(load); stats.cost += finCost(load); }
+  const d = getShipmentDate(load);
+  if (d && d > stats.lastShipDate) { stats.lastShipDate = d; stats.lastCost = load.carrierCost ?? null; stats.lastSell = load.revenue ?? null; }
 }
 
 function getAverage(total: number, count: number): number | null {
@@ -339,7 +320,7 @@ type ShipmentSortKey = 'date' | 'revenue' | 'cost' | 'margin';
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export default function LanesView() {
-  const { loads, rawLoads, filters, comparisonMode, viewMode } = useData();
+  const { loads, prevLoads, compWindow, rawLoads, filters, viewMode } = useData();
   const [level, setLevel] = useState<LaneLevel>('city');
   const [datRates, setDatRates] = useState<Record<string, number>>({});
   const setDatRate = (lane: string, value: string) => {
@@ -383,26 +364,13 @@ export default function LanesView() {
   const [ctSortKey, setCtSortKey] = useState<CtSortKey>('costDeltaPct');
   const [ctSortDir, setCtSortDir] = useState<SortDir>('desc');
 
-  const compWindow = useMemo(() => getComparisonWindow(filters.dateRange, comparisonMode, rawLoads), [filters.dateRange, comparisonMode, rawLoads]);
-  // Only compare against a window we actually have data for (see lib/comparison.ts)
-  const priorRange = compWindow.covered ? compWindow.range : null;
-
-  const prevLoads = useMemo(() => {
-    if (!priorRange) return [];
-    return rawLoads
-      .filter((load) => isActiveLoad(load) && matchesPriorFilters(load, filters, priorRange))
-      .map(computeLoad)
-      .filter((load) => viewMode === 'booked' || load.simpleStatus === 'Locked');
-  }, [rawLoads, filters, priorRange, viewMode]);
-
-    // Lane Lookup is for quoting, so it searches all stored history, not just the date range at the top
-    const lookupLoads = useMemo(() => rawLoads
-      .filter(isActiveLoad)
-      .filter(l => filters.team === 'all' || l.team === filters.team)
-      .filter(l => filters.equipmentType === 'all' || l.equipmentType === filters.equipmentType)
-      .map(computeLoad)
-      .filter(l => viewMode === 'booked' || l.simpleStatus === 'Locked'),
-    [rawLoads, filters.team, filters.equipmentType, viewMode]);
+    // Lane Lookup follows the date range; tick "Search all history" for quoting from older loads
+    const [lookupAllHistory, setLookupAllHistory] = useState(false);
+    const lookupLoads = useMemo(() => {
+      if (!lookupAllHistory) return loads;
+      const allTime = { start: '0000-01-01', end: '9999-12-31' };
+      return selectLoads(rawLoads, filters, allTime, viewMode);
+    }, [lookupAllHistory, loads, rawLoads, filters, viewMode]);
 
     // Available equipment types for the lookup
     const lookupEquipOptions = useMemo(() => {
@@ -418,27 +386,26 @@ export default function LanesView() {
 
     const ensureLane = (load: ComputedLoad) => {
       const { key, label } = getLaneIdentity(load, level);
-      const equip = getEquipmentLabel(load);
-      const mapKey = `${key}||${equip}`;
-      const existing = map.get(mapKey);
+      const existing = map.get(key);
       if (existing) return existing;
-      const next: LaneAgg = { lane: label, equipment: equip, current: createEmptyPeriodStats(), prior: createEmptyPeriodStats() };
-      map.set(mapKey, next);
+      const next: LaneAgg = { lane: label, equipment: '', equipSet: new Set(), current: createEmptyPeriodStats(), prior: createEmptyPeriodStats() };
+      map.set(key, next);
       return next;
     };
 
-    loads.forEach((load) => updatePeriodStats(ensureLane(load).current, load));
-    prevLoads.forEach((load) => updatePeriodStats(ensureLane(load).prior, load));
+    // One row per lane; equipment types are listed together
+    loads.forEach((load) => { const la = ensureLane(load); la.equipSet.add(getEquipmentLabel(load)); updatePeriodStats(la.current, load); });
+    prevLoads.forEach((load) => { const la = ensureLane(load); la.equipSet.add(getEquipmentLabel(load)); updatePeriodStats(la.prior, load); });
 
     const todayMs = parseDateOnly(new Date().toISOString().slice(0, 10)) ?? Date.now();
 
     return [...map.values()].map((la) => {
-      const avgCostCur = getAverage(la.current.cost, la.current.loads);
-      const avgCostPrev = getAverage(la.prior.cost, la.prior.loads);
-      const avgRevenueCur = getAverage(la.current.revenue, la.current.loads);
-      const avgRevenuePrev = getAverage(la.prior.revenue, la.prior.loads);
-      const marginCur = getMargin(la.current.revenue, la.current.cost, la.current.loads);
-      const marginPrev = getMargin(la.prior.revenue, la.prior.cost, la.prior.loads);
+      const avgCostCur = getAverage(la.current.cost, la.current.finLoads);
+      const avgCostPrev = getAverage(la.prior.cost, la.prior.finLoads);
+      const avgRevenueCur = getAverage(la.current.revenue, la.current.finLoads);
+      const avgRevenuePrev = getAverage(la.prior.revenue, la.prior.finLoads);
+      const marginCur = getMargin(la.current.revenue, la.current.cost, la.current.finLoads);
+      const marginPrev = getMargin(la.prior.revenue, la.prior.cost, la.prior.finLoads);
       const hasPriorData = la.prior.loads > 0;
       const currentShipMs = parseDateOnly(la.current.lastShipDate);
       const costDelta = hasPriorData && avgCostCur != null && avgCostPrev != null ? avgCostCur - avgCostPrev : null;
@@ -450,7 +417,7 @@ export default function LanesView() {
 
       return {
         lane: la.lane,
-        equipment: la.equipment,
+        equipment: [...la.equipSet].sort().join(', '),
         loadsCur: la.current.loads,
         loadsPrev: la.prior.loads,
         hasPriorData,
@@ -1095,6 +1062,10 @@ export default function LanesView() {
               Lane Lookup
             </CardTitle>
             <div className="flex items-center gap-2">
+              <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
+                <Checkbox checked={lookupAllHistory} onCheckedChange={v => setLookupAllHistory(v === true)} />
+                Search all history
+              </label>
               <Select value={lookupEquipFilter} onValueChange={setLookupEquipFilter}>
                 <SelectTrigger className="h-8 w-40 text-xs"><SelectValue placeholder="All Equipment" /></SelectTrigger>
                 <SelectContent>

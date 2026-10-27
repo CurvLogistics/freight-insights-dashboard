@@ -79,7 +79,8 @@ export default function AskClaude() {
     const header = [
       `Date range: ${filters.dateRange.start || 'any'} to ${filters.dateRange.end || 'any'}`,
       `View: ${viewMode}`,
-      filters.team !== 'all' && `Team: ${filters.team}`,
+      filters.owner !== 'all' && `Account owner: ${filters.owner}`,
+      filters.excludedTeams.length > 0 && `Teams excluded: ${filters.excludedTeams.join(', ')}`,
       filters.equipmentType !== 'all' && `Equipment: ${filters.equipmentType}`,
       filters.search && `Search: "${filters.search}"`,
     ].filter(Boolean).join(' | ');

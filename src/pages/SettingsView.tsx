@@ -13,7 +13,7 @@ import { Loader2, AlertTriangle, RefreshCw, Download, Database, History, Upload 
 import { formatUSDate, formatUSDateTime } from '@/lib/dates';
 
 const sourceLabels = {
-  turvo: 'Turvo (weekly API sync)',
+  turvo: 'Turvo (daily API sync)',
   csv: 'CSV import (this browser only)',
   none: 'No data yet',
 } as const;
@@ -49,13 +49,13 @@ function TurvoSyncCard({ isAdmin }: { isAdmin: boolean }) {
               Turvo Sync
             </CardTitle>
             <CardDescription>
-              Shipments are pulled from Turvo every Monday. Credentials are stored on the server, never in the browser.
+              Shipments are pulled from Turvo every day at about 5 AM ET. Credentials are stored on the server, never in the browser.
             </CardDescription>
           </div>
           <div className="flex gap-2 shrink-0">
             {isAdmin && (
               <>
-                <Button variant="outline" size="sm" onClick={() => void handleSync(180)} disabled={syncing} className="gap-1.5" title="Turvo's API maximum. Run once to backfill; the weekly sync keeps it going.">
+                <Button variant="outline" size="sm" onClick={() => void handleSync(180)} disabled={syncing} className="gap-1.5" title="Turvo's API maximum. Run once to backfill; the daily sync keeps it going.">
                   <History className="w-3.5 h-3.5" />
                   Backfill 180 days
                 </Button>
@@ -166,8 +166,8 @@ function HistoryImportCard() {
   );
 }
 
-/** Historical CSV import is hidden — all data now comes from the Turvo API. Flip to true to bring it back. */
-const SHOW_CSV_IMPORT = false;
+/** Historical CSV import (admin only) — loads synced from the Turvo API always win over CSV rows with the same ID. */
+const SHOW_CSV_IMPORT = true;
 
 const SettingsView = () => {
   const { isAdmin } = useRole();

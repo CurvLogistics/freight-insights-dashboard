@@ -1,3 +1,4 @@
+import { UNKNOWN_LANE } from '@/lib/computeLoads';
 import { useState, useMemo } from 'react';
 import { useData } from '@/context/DataContext';
 import { Card, CardContent } from '@/components/ui/card';
@@ -231,7 +232,7 @@ export default function CarrierScorecardView() {
       if (l.onTimeDelivery === 'On Time') { e.onTimeDelivery++; e.knownDelivery++; }
       else if (l.onTimeDelivery === 'Late') { e.lateDelivery++; e.knownDelivery++; }
 
-      if (l.lane && l.lane !== 'Unknown') {
+      if (l.lane && l.lane !== UNKNOWN_LANE) {
         e.activeLanes.add(l.lane);
         const le = e.laneLoads.get(l.lane) || { loads: 0, cost: 0, revenue: 0, otd: 0, knownOtd: 0, lastShipDate: '' };
         le.loads++;

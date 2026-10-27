@@ -1,13 +1,12 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useData } from '@/context/DataContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Activity, TrendingDown, Target, AlertTriangle } from 'lucide-react';
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '@/components/ui/table';
-import { Load } from '@/types/loads';
-import { isActiveLoad, hasFinancials, finRev, finCost } from '@/lib/computeLoads';
-import { getComparisonWindow, inRange } from '@/lib/comparison';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { laneKey, buildLaneVolatility, FLOOR_TARGET, STRETCH_TARGET } from '@/lib/laneVolatility';
+import { laneOf } from '@/lib/computeLoads';
+import { aggregate, groupBy, daysInRange } from '@/lib/filters';
+import { formatUSDate } from '@/lib/dates';
+import { buildLaneVolatility, FLOOR_TARGET, STRETCH_TARGET } from '@/lib/laneVolatility';
 
 const fmt = (n: number) => `$${Math.round(n).toLocaleString('en-US')}`;
 const pct = (n: number) => `${n.toFixed(1)}%`;
@@ -23,34 +22,6 @@ const delta = (cur: number, prev: number) => {
   const p = (d / prev) * 100;
   return { abs: d, pct: p, label: `${d >= 0 ? '+' : ''}${p.toFixed(1)}%` };
 };
-
-interface PeriodAgg {
-  loads: Load[];
-  totalLoads: number;
-  revenue: number;
-  cost: number;
-  profit: number;
-  margin: number;
-  avgCost: number;
-}
-
-function aggregatePeriod(loads: Load[]): PeriodAgg {
-  const revenue = loads.reduce((s, l) => s + finRev(l), 0);
-  const cost = loads.reduce((s, l) => s + finCost(l), 0);
-  const profit = revenue - cost;
-  const margin = revenue > 0 ? (profit / revenue) * 100 : 0;
-  const finCount = loads.filter(hasFinancials).length;
-  const avgCost = finCount > 0 ? cost / finCount : 0;
-  return { loads, totalLoads: loads.length, revenue, cost, profit, margin, avgCost };
-}
-
-const OWNER_STORAGE_KEY = 'freightops.laneVolatility.owner';
-function readStoredOwner(): string {
-  try { return localStorage.getItem(OWNER_STORAGE_KEY) || ''; } catch { return ''; }
-}
-function storeOwner(v: string) {
-  try { localStorage.setItem(OWNER_STORAGE_KEY, v); } catch { /* private mode etc. */ }
-}
 
 interface LaneComparison {
   name: string;
@@ -70,49 +41,15 @@ interface LaneComparison {
 }
 
 export default function BusinessIntelligence() {
-  const { rawLoads, filters, comparisonMode } = useData();
-  const [owner, setOwnerState] = useState<string>(readStoredOwner);
-  const setOwner = (v: string) => { setOwnerState(v); storeOwner(v); };
-
-  const owners = useMemo(
-    () => [...new Set(rawLoads.map(l => l.broker).filter(Boolean) as string[])].sort((a, b) => a.localeCompare(b)),
-    [rawLoads],
-  );
+  const { loads, prevLoads, compWindow, filters, comparisonMode } = useData();
 
   const data = useMemo(() => {
-    const { start, end } = filters.dateRange;
-    if (!start || !end) return null;
+    const curLoads = loads;
+    const cur = aggregate(curLoads);
+    const prv = aggregate(prevLoads);
 
-    const filterBase = (l: Load) => {
-      if (filters.team !== 'all' && l.team !== filters.team) return false;
-      if (filters.equipmentType !== 'all' && l.equipmentType !== filters.equipmentType) return false;
-      return isActiveLoad(l);
-    };
-    const curLoads = rawLoads.filter(l => {
-      if (!filterBase(l)) return false;
-      const d = (l.pickupDate || l.deliveryDate)?.slice(0, 10);
-      if (!d) return false;
-      return d >= start && d <= end;
-    });
-
-    const comp = getComparisonWindow(filters.dateRange, comparisonMode, rawLoads);
-    const prevLoads = comp.covered && comp.range
-      ? rawLoads.filter(l => filterBase(l) && inRange(l, comp.range!))
-      : [];
-
-    const cur = aggregatePeriod(curLoads);
-    const prv = aggregatePeriod(prevLoads);
-
-    const curByLane = new Map<string, Load[]>();
-    curLoads.forEach(l => {
-      const k = laneKey(l);
-      (curByLane.get(k) || (curByLane.set(k, []), curByLane.get(k)!)).push(l);
-    });
-    const prevByLane = new Map<string, Load[]>();
-    prevLoads.forEach(l => {
-      const k = laneKey(l);
-      (prevByLane.get(k) || (prevByLane.set(k, []), prevByLane.get(k)!)).push(l);
-    });
+    const curByLane = groupBy(curLoads, l => laneOf(l));
+    const prevByLane = groupBy(prevLoads, l => laneOf(l));
 
     const lanes: LaneComparison[] = [];
     const allLaneKeys = new Set([...curByLane.keys(), ...prevByLane.keys()]);
@@ -122,17 +59,8 @@ export default function BusinessIntelligence() {
       // Include lane if it has at least 1 load in either period
       if (cl.length === 0 && pl.length === 0) return;
 
-      const cRev = cl.reduce((s, l) => s + finRev(l), 0);
-      const cCost = cl.reduce((s, l) => s + finCost(l), 0);
-      const pRev = pl.reduce((s, l) => s + finRev(l), 0);
-      const pCost = pl.reduce((s, l) => s + finCost(l), 0);
-      const cFin = cl.filter(hasFinancials).length;
-      const pFin = pl.filter(hasFinancials).length;
-
-      const marginCur = cRev > 0 ? ((cRev - cCost) / cRev) * 100 : 0;
-      const marginPrev = pRev > 0 ? ((pRev - pCost) / pRev) * 100 : 0;
-      const avgCostCur = cFin > 0 ? cCost / cFin : 0;
-      const avgCostPrev = pFin > 0 ? pCost / pFin : 0;
+      const c = aggregate(cl), p = aggregate(pl);
+      const marginCur = c.margin, marginPrev = p.margin, avgCostCur = c.avgCost, avgCostPrev = p.avgCost;
       const costD = delta(avgCostCur, avgCostPrev);
       const comparable = cl.length > 0 && pl.length > 0;
 
@@ -147,19 +75,19 @@ export default function BusinessIntelligence() {
         name, loads: cl.length, loadsPrev: pl.length,
         avgCostCur, avgCostPrev,
         costDelta: comparable ? costD.abs : null, costDeltaPct: comparable ? costD.pct : null,
-        revenueCur: cRev, costCur: cCost, marginCur, marginPrev, marginDelta: marginCur - marginPrev,
+        revenueCur: c.revenue, costCur: c.cost, marginCur, marginPrev, marginDelta: marginCur - marginPrev,
         actions,
       });
     });
 
-    const loadsDelta = delta(cur.totalLoads, prv.totalLoads);
+    const loadsDelta = delta(cur.loads, prv.loads);
     const revDelta = delta(cur.revenue, prv.revenue);
     const profitDelta = delta(cur.profit, prv.profit);
     const marginDelta = { abs: cur.margin - prv.margin, pct: 0, label: '' };
     const costDelta = delta(cur.avgCost, prv.avgCost);
 
     const interpretations: string[] = [];
-    if (prv.totalLoads > 0) {
+    if (prv.loads > 0) {
       const volDir = Math.abs(loadsDelta.pct) < 2 ? 'flat' : loadsDelta.pct > 0 ? `up ${Math.abs(loadsDelta.pct).toFixed(0)}%` : `down ${Math.abs(loadsDelta.pct).toFixed(0)}%`;
       const marginDir = Math.abs(marginDelta.abs) < 0.5 ? 'stable' : marginDelta.abs > 0 ? `up ${marginDelta.abs.toFixed(1)} pts` : `down ${Math.abs(marginDelta.abs).toFixed(1)} pts`;
       interpretations.push(`Volume ${volDir}, margin ${marginDir}`);
@@ -176,13 +104,10 @@ export default function BusinessIntelligence() {
     return {
       cur, prv, lanes, interpretations, modeLabel, curLoads,
       loadsDelta, revDelta, profitDelta, marginDelta, costDelta,
-      hasPrev: prv.totalLoads > 0,
+      hasPrev: prv.loads > 0,
     };
-  }, [rawLoads, filters, comparisonMode]);
-   const laneVolatility = useMemo(
-    () => (data && owner ? buildLaneVolatility(data.curLoads, owner) : []),
-    [data, owner],
-  );
+  }, [loads, prevLoads, comparisonMode]);
+  const laneVolatility = useMemo(() => (data ? buildLaneVolatility(data.curLoads) : []), [data]);
 
   if (!data) return null;
 
@@ -196,7 +121,8 @@ export default function BusinessIntelligence() {
   // Margin compression needs a margin in both periods.
   const MIN_COMPRESSION_LOADS = 3;
   const marginCompression = [...lanes].filter(l => l.loads >= MIN_COMPRESSION_LOADS && l.loadsPrev >= MIN_COMPRESSION_LOADS).sort((a, b) => a.marginDelta - b.marginDelta).slice(0, 10);
-  const actionNeeded = lanes.filter(l => l.actions.length > 0 && l.loads >= 10).sort((a, b) => a.marginCur - b.marginCur).slice(0, 15);
+  const minActionLoads = filters.owner === 'all' ? 10 : 3;
+  const actionNeeded = lanes.filter(l => l.actions.length > 0 && l.loads >= minActionLoads).sort((a, b) => a.marginCur - b.marginCur).slice(0, 15);
 
   const colorCls = (v: number, invert = false) => {
     const positive = invert ? v < 0 : v > 0;
@@ -217,10 +143,14 @@ export default function BusinessIntelligence() {
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-sm font-medium">Business Health</CardTitle>
+          <p className="text-xs text-muted-foreground">
+            {formatUSDate(filters.dateRange.start)} – {formatUSDate(filters.dateRange.end)} ({daysInRange(filters.dateRange)} days)
+            {hasPrev && compWindow.range && <> · vs {formatUSDate(compWindow.range.start)} – {formatUSDate(compWindow.range.end)}</>}
+          </p>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-4">
-            <HealthMetric label="Loads" current={cur.totalLoads.toString()} delta={hasPrev ? data.loadsDelta : null} isCount />
+            <HealthMetric label="Loads" current={cur.loads.toString()} delta={hasPrev ? data.loadsDelta : null} isCount />
             <HealthMetric label="Revenue" current={fmtCompact(cur.revenue)} delta={hasPrev ? data.revDelta : null} />
             <HealthMetric label="Profit" current={fmtCompact(cur.profit)} delta={hasPrev ? data.profitDelta : null} />
             <HealthMetric label="Margin %" current={pct(cur.margin)} delta={hasPrev ? { abs: data.marginDelta.abs, pct: 0, label: '' } : null} isMargin />
@@ -339,15 +269,6 @@ export default function BusinessIntelligence() {
               Lane Volatility
               <span className="text-[10px] text-muted-foreground font-normal ml-1">Floor {FLOOR_TARGET}% · Stretch {STRETCH_TARGET}%</span>
             </CardTitle>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground">Account owner</span>
-              <Select value={owner || undefined} onValueChange={setOwner}>
-                <SelectTrigger className="h-8 w-48 text-xs"><SelectValue placeholder="Select your name" /></SelectTrigger>
-                <SelectContent>
-                  {owners.map(o => <SelectItem key={o} value={o} className="text-xs">{o}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
           </CardHeader>
           <CardContent className="p-0">
             <div className="overflow-auto max-h-[400px]">
@@ -366,7 +287,7 @@ export default function BusinessIntelligence() {
                 <TableBody>
                   {laneVolatility.length === 0 && (
                     <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground text-xs py-8">
-                      {owner ? `No loads for ${owner} in this period` : 'Select your name to see your lanes'}
+                      {'No loads in this period'}
                     </TableCell></TableRow>
                   )}
                   {laneVolatility.map(l => (
