@@ -142,7 +142,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <div className="flex items-center gap-2 flex-wrap">
             {/* Timeframe Preset */}
             <Select value={timeframePreset} onValueChange={v => setTimeframePreset(v as any)}>
-              <SelectTrigger className="h-9 w-28 text-xs" title={VIEW_MODE_HELP}><SelectValue /></SelectTrigger>
+              <SelectTrigger className="h-9 w-28 text-xs"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="rolling7">Rolling 7</SelectItem>
                 <SelectItem value="rolling30">Rolling 30</SelectItem>
@@ -184,7 +184,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
             {/* View Mode: Booked vs Locked */}
             <Select value={viewMode} onValueChange={v => setViewMode(v as any)}>
-              <SelectTrigger className="h-9 w-28 text-xs"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="h-9 w-28 text-xs" title={VIEW_MODE_HELP}><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="booked">Booked</SelectItem>
                 <SelectItem value="locked">Locked</SelectItem>

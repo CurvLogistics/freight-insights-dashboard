@@ -51,12 +51,13 @@ export const ownerOf = (l: Pick<Load, 'broker'>) => l.broker?.trim() || 'Unassig
  * UTC timestamps are converted to the US business day (BUSINESS_TZ) so loads near midnight don't
  * land on the wrong day — the usual cause of an off-by-one versus Turvo's Shipment Summary.
  */
-export const shipDate = (l: Pick<Load, 'pickupDate' | 'deliveryDate'>) => toBusinessDate(l.pickupDate || l.deliveryDate);
+export const shipDate = (l: Pick<Load, 'scheduledPickupDate' | 'pickupDate' | 'deliveryDate'>) =>
+  toBusinessDate(l.scheduledPickupDate || l.pickupDate || l.deliveryDate);
 
 /** What the Booked / Locked toggle means. Shown as a tooltip next to the toggle. */
 export const VIEW_MODE_HELP =
-  'Both views filter by pickup date (delivery date if there is no pickup), excluding canceled and draft loads. ' +
-  'Booked = every load picked up in the period. Locked = only the loads whose financials are final: ' +
+  'Both views filter by the scheduled pickup date, as in Turvo\'s Shipment Summary (actual pickup or delivery date if none is scheduled), excluding canceled and draft loads. ' +
+  'Booked = every load scheduled to pick up in the period. Locked = only the loads whose financials are final: ' +
   'status Ready for Billing or Completed, or a ready-to-bill date in Turvo.';
 
 /**

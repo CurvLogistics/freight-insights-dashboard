@@ -35,8 +35,8 @@ function shiftYears(d: string, years: number) {
 }
 
 /** Same rule as filters.shipDate: pickup (else delivery) date, UTC timestamps moved to the US business day. */
-export const shipmentDate = (l: Pick<Load, 'pickupDate' | 'deliveryDate'>) =>
-  toBusinessDate(l.pickupDate || l.deliveryDate);
+export const shipmentDate = (l: Pick<Load, 'scheduledPickupDate' | 'pickupDate' | 'deliveryDate'>) =>
+  toBusinessDate(l.scheduledPickupDate || l.pickupDate || l.deliveryDate);
 
 /** Earliest / latest shipment date in the dataset. */
 export function getDatasetBounds(loads: Load[]): { min: string; max: string } {
