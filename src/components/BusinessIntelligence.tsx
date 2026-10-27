@@ -116,8 +116,8 @@ export default function BusinessIntelligence() {
   // Lanes with current loads only; lanes new this period (no prior loads) sort after real comparisons and show "New".
   const costMovement = [...lanes]
     .filter(l => l.loads > 0)
-    .sort((a, b) => (b.costDelta ?? -Infinity) - (a.costDelta ?? -Infinity) || b.loads - a.loads)
-    .slice(0, 10);
+    .sort((a, b) => (b.costDelta ?? -Infinity) - (a.costDelta ?? -Infinity) || b.loads - a.loads);
+
   // Margin compression needs a margin in both periods.
   const MIN_COMPRESSION_LOADS = 3;
   const marginCompression = [...lanes].filter(l => l.loads >= MIN_COMPRESSION_LOADS && l.loadsPrev >= MIN_COMPRESSION_LOADS).sort((a, b) => a.marginDelta - b.marginDelta).slice(0, 10);

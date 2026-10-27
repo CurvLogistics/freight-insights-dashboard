@@ -5,6 +5,25 @@
 
 const pad = (n: number) => String(n).padStart(2, '0');
 
+/** Reporting days are US business days in this time zone. Change if the team works off Central/Pacific. */
+export const BUSINESS_TZ = 'America/New_York';
+
+const UTC_STAMP = /T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]00:?00)$/i;
+
+/**
+ * The calendar day a timestamp falls on, for date filters and grouping.
+ * - "2026-10-08" or a local/offset timestamp ("2026-10-08T22:00:00-05:00") → its own date.
+ * - A UTC timestamp ("2026-10-09T02:00:00Z") → the date in BUSINESS_TZ (here 2026-10-08),
+ *   so a late-evening US pickup isn't counted on the next day.
+ */
+export function toBusinessDate(value?: string | null, tz: string = BUSINESS_TZ): string {
+  if (!value) return '';
+  if (!UTC_STAMP.test(value)) return value.slice(0, 10);
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value.slice(0, 10);
+  return new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+}
+
 /** "2026-10-08" or "2026-10-08T14:00:00Z" -> "10/08/2026". Empty/invalid -> "—". */
 export function formatUSDate(value?: string | null): string {
   if (!value) return '—';
