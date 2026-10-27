@@ -11,7 +11,7 @@ import ComparisonRankTable, { ComparisonRow } from '@/components/ComparisonRankT
 import BusinessIntelligence from '@/components/BusinessIntelligence';
 import { finRev, finCost, DATA_QUALITY_CHECKS, getDataQualityLoads, type DataQualityIssue } from '@/lib/computeLoads';
 import LoadListDrawer from '@/components/LoadListDrawer';
-import { aggregate, groupBy, shipDate, teamOf } from '@/lib/filters';
+import { aggregate, groupBy, shipDate, teamOf, ownerOf, customerOf, matchesFocus, minRankLoads, VIEW_MODE_HELP, type Focus } from '@/lib/filters';
 import { formatUSShortDate } from '@/lib/dates';
 
 
@@ -27,38 +27,24 @@ const fmtCompact = (n: number) => {
 const SHOW_BROKER_COMPARISON = false;
 
 export default function DashboardView() {
-  const { loads, prevLoads, compWindow, rawLoads, dataQuality, comparisonMode, viewMode } = useData();
-  const [dashFilter, setDashFilter] = useState<{ type: 'customer' | 'broker' | 'lane'; value: string } | null>(null);
+  const { loads, prevLoads, compWindow, rawLoads, dataQuality, comparisonMode, viewMode, filters } = useData();
+  const [dashFilter, setDashFilter] = useState<Focus>(null);
 
-  const filteredLoads = dashFilter
-    ? loads.filter(l => {
-        if (dashFilter.type === 'customer') return (l.customerName || 'Unknown') === dashFilter.value;
-        if (dashFilter.type === 'broker') return (l.broker || 'Unassigned') === dashFilter.value;
-        if (dashFilter.type === 'lane') return l.lane === dashFilter.value;
-        return true;
-      })
-    : loads;
+  // A row click (customer / broker / lane) filters EVERY section on this page, including
+  // Business Intelligence below — before, only the KPIs and charts followed it.
+  const filteredLoads = useMemo(() => (dashFilter ? loads.filter(l => matchesFocus(l, dashFilter)) : loads), [loads, dashFilter]);
+  const filteredPrevLoads = useMemo(() => (dashFilter ? prevLoads.filter(l => matchesFocus(l, dashFilter)) : prevLoads), [prevLoads, dashFilter]);
 
   const cur = aggregate(filteredLoads);
   const totalLoads = cur.loads, totalRevenue = cur.revenue, totalProfit = cur.profit, avgMargin = cur.margin;
 
   // Comparison period KPI metrics
   const prevPeriodMetrics = useMemo(() => {
-    if (prevLoads.length === 0) return null;
-    let prev = prevLoads;
-    if (dashFilter) {
-      prev = prev.filter(l => {
-        if (dashFilter.type === 'customer') return (l.customerName || 'Unknown') === dashFilter.value;
-        if (dashFilter.type === 'broker') return (l.broker || 'Unassigned') === dashFilter.value;
-        if (dashFilter.type === 'lane') return l.lane === dashFilter.value;
-        return true;
-      });
-    }
-    if (prev.length === 0) return null;
-    const a = aggregate(prev);
+        if (filteredPrevLoads.length === 0) return null;
+    const a = aggregate(filteredPrevLoads);
     const modeLabel = comparisonMode === 'yoy' ? 'YoY' : 'vs prior';
     return { revenue: a.revenue, profit: a.profit, margin: a.margin, loads: a.loads, modeLabel };
-  }, [prevLoads, dashFilter, comparisonMode]);
+  }, [filteredPrevLoads, comparisonMode]);
 
   // Build comparison rows for entities
   const buildComparisonRows = useCallback((
@@ -105,7 +91,7 @@ export default function DashboardView() {
   const hasPrev = prevLoads.length > 0;
 
   const compBrokers = useMemo(() =>
-    SHOW_BROKER_COMPARISON && hasPrev ? buildComparisonRows(l => l.broker || 'Unassigned', l => l.broker || 'Unassigned', loads, prevLoads) : [],
+    SHOW_BROKER_COMPARISON && hasPrev ? buildComparisonRows(ownerOf, ownerOf, loads, prevLoads) : [],
     [hasPrev, loads, prevLoads, buildComparisonRows]);
 
   const compLanes = useMemo(() =>
@@ -133,14 +119,25 @@ export default function DashboardView() {
   const teamMinProfit = Math.min(0, ...teamData.map(t => t.profit));
   const teamAxisMin = teamMinProfit < -0.05 * teamMaxRevenue ? 'auto' : 0;
 
-  const rankBy = (keyFn: (l: typeof loads[0]) => string) =>
-    [...groupBy(loads, keyFn).entries()]
-      .map(([name, ls]) => { const a = aggregate(ls); return { name, loads: a.loads, revenue: a.finRevenue, cost: a.cost, profit: a.profit, margin: a.margin, hasAnyCost: a.finLoads > 0 }; })
-      .filter(r => r.loads >= 10 && r.revenue > 0 && r.hasAnyCost);
+   // Brokers: the broker on the load (ownerOf), loads with none go to "Unassigned" so the
+  // table can always add up to the total. Same rule as the owner filter and Productivity.
+  const minLoads = minRankLoads(filters.dateRange);
+  const rankBy = (keyFn: (l: typeof loads[0]) => string) => {
+    const all = [...groupBy(loads, keyFn).entries()]
+      .map(([name, ls]) => { const a = aggregate(ls); return { name, loads: a.loads, revenue: a.finRevenue, cost: a.cost, profit: a.profit, margin: a.margin, hasAnyCost: a.finLoads > 0 }; });
+    const rows = all.filter(r => r.loads >= minLoads && r.revenue > 0 && r.hasAnyCost);
+    const shownLoads = rows.reduce((s, r) => s + r.loads, 0);
+    const note = shownLoads === loads.length
+      ? `All ${loads.length} loads included.`
+      : `${shownLoads} of ${loads.length} loads included — ${all.length - rows.length} with fewer than ${minLoads} loads or no carrier cost are hidden.`;
+    return { rows, note };
+  };
 
-  const qualifiedCust = rankBy(l => l.customerName || 'Unknown');
-  const qualifiedBrokers = rankBy(l => l.broker || 'Unassigned');
+  const qualifiedCust = rankBy(customerOf);
+  const qualifiedBrokers = rankBy(ownerOf);
   const qualifiedLanes = rankBy(l => l.lane);
+  const rankEmpty = (what: string) =>
+    loads.length === 0 ? 'No loads in this period' : `No ${what} with ${minLoads}+ loads and carrier cost in this period`;
 
   const handleRowClick = useCallback((type: 'customer' | 'broker' | 'lane') => (name: string) => {
     setDashFilter(prev => prev?.type === type && prev.value === name ? null : { type, value: name });
@@ -176,6 +173,7 @@ export default function DashboardView() {
           </div>
           <p className="text-muted-foreground text-sm mt-1">
             {totalLoads} loads · {viewMode === 'locked' ? 'Locked only' : 'All booked'}
+            <InfoTip text={VIEW_MODE_HELP} className="ml-1 align-text-bottom" />
           </p>
         </div>
         {dashFilter && (
@@ -298,16 +296,16 @@ export default function DashboardView() {
 
       {/* Current-period rank tables (always shown) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <InteractiveRankTable title="Top Lanes by Profit" data={qualifiedLanes} defaultSort="profit" defaultDir="desc" onRowClick={handleRowClick('lane')} selectedRow={dashFilter?.type === 'lane' ? dashFilter.value : null} />
-        <InteractiveRankTable title="Bottom Lanes by Margin %" data={qualifiedLanes} defaultSort="margin" defaultDir="asc" highlight="margin" onRowClick={handleRowClick('lane')} selectedRow={dashFilter?.type === 'lane' ? dashFilter.value : null} />
+        <InteractiveRankTable title="Top Lanes by Profit" data={qualifiedLanes.rows} footnote={qualifiedLanes.note} emptyMessage={rankEmpty('lanes')} defaultSort="profit" defaultDir="desc" onRowClick={handleRowClick('lane')} selectedRow={dashFilter?.type === 'lane' ? dashFilter.value : null} />
+        <InteractiveRankTable title="Bottom Lanes by Margin %" data={qualifiedLanes.rows} footnote={qualifiedLanes.note} emptyMessage={rankEmpty('lanes')} defaultSort="margin" defaultDir="asc" highlight="margin" onRowClick={handleRowClick('lane')} selectedRow={dashFilter?.type === 'lane' ? dashFilter.value : null} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <InteractiveRankTable title="Top Brokers by Profit" data={qualifiedBrokers} defaultSort="profit" defaultDir="desc" onRowClick={handleRowClick('broker')} selectedRow={dashFilter?.type === 'broker' ? dashFilter.value : null} />
-        <InteractiveRankTable title="Bottom Brokers by Margin %" data={qualifiedBrokers} defaultSort="margin" defaultDir="asc" highlight="margin" onRowClick={handleRowClick('broker')} selectedRow={dashFilter?.type === 'broker' ? dashFilter.value : null} />
+        <InteractiveRankTable title="Top Brokers by Profit" data={qualifiedBrokers.rows} footnote={qualifiedBrokers.note} emptyMessage={rankEmpty('brokers')} defaultSort="profit" defaultDir="desc" onRowClick={handleRowClick('broker')} selectedRow={dashFilter?.type === 'broker' ? dashFilter.value : null} />
+        <InteractiveRankTable title="Bottom Brokers by Margin %" data={qualifiedBrokers.rows} footnote={qualifiedBrokers.note} emptyMessage={rankEmpty('brokers')} defaultSort="margin" defaultDir="asc" highlight="margin" onRowClick={handleRowClick('broker')} selectedRow={dashFilter?.type === 'broker' ? dashFilter.value : null} />
       </div>
 
-      <InteractiveRankTable title="Top Customers by Profit" data={qualifiedCust} defaultSort="profit" defaultDir="desc" onRowClick={handleRowClick('customer')} selectedRow={dashFilter?.type === 'customer' ? dashFilter.value : null} />
+      <InteractiveRankTable title="Top Customers by Profit" data={qualifiedCust.rows} footnote={qualifiedCust.note} emptyMessage={rankEmpty('customers')} defaultSort="profit" defaultDir="desc" onRowClick={handleRowClick('customer')} selectedRow={dashFilter?.type === 'customer' ? dashFilter.value : null} />
 
       <LoadListDrawer
         open={dqIssue != null}
@@ -320,7 +318,7 @@ export default function DashboardView() {
 
       {/* Business Intelligence Layer */}
 
-      <BusinessIntelligence />
+        <BusinessIntelligence loads={filteredLoads} prevLoads={filteredPrevLoads} />
     </div>
   );
 }

@@ -26,7 +26,7 @@ export default function ProductivityView() {
       <div>
         <div className="flex items-center gap-2">
           <h2 className="text-2xl font-bold">Productivity</h2>
-          <DataTrustBadge level="verified" tooltip="Based on all loads with assigned brokers in the current filter" />
+          <DataTrustBadge level="verified" tooltip="All loads in the current filter, credited to the broker on the load in Turvo. Loads with no broker are listed as Unassigned, so the totals match the Executive Overview."/>
         </div>
         <p className="text-muted-foreground text-sm mt-1">Performance by broker / operator — click a name to see their top lanes and customers</p>
       </div>

@@ -1,6 +1,7 @@
 import type { Load, ComputedLoad } from '@/types/loads';
 import { computeLoad, isActiveLoad, hasFinancials, finRev, finCost } from '@/lib/computeLoads';
 import type { DateRange } from '@/lib/comparison';
+import { BUSINESS_TZ, toBusinessDate } from '@/lib/dates';
 
 export type TimeframePreset = 'rolling7' | 'rolling30' | 'rolling90' | 'mtd' | 'qtd' | 'ytd' | 'custom';
 export type ViewMode = 'booked' | 'locked';
@@ -13,8 +14,8 @@ export interface Filters {
   search: string;
 }
 
-/** "Yesterday" is decided in this time zone. Change if the team works off Central/Pacific. */
-export const BUSINESS_TZ = 'America/New_York';
+/** "Yesterday" and every load's ship date are decided in this time zone (see lib/dates.ts). */
+export { BUSINESS_TZ };
 
 const DAY_MS = 86_400_000;
 const toMs = (d: string) => { const [y, m, day] = d.slice(0, 10).split('-').map(Number); return Date.UTC(y, m - 1, day); };
@@ -45,8 +46,37 @@ export function getPresetRange(preset: TimeframePreset, end = businessYesterday(
 
 export const teamOf = (l: Pick<Load, 'team'>) => l.team?.trim() || 'Unassigned';
 export const ownerOf = (l: Pick<Load, 'broker'>) => l.broker?.trim() || 'Unassigned';
-export const shipDate = (l: Pick<Load, 'pickupDate' | 'deliveryDate'>) => (l.pickupDate || l.deliveryDate || '').slice(0, 10);
+/**
+ * The date a load counts on, in Booked AND Locked view: pickup date, or delivery date if there is no pickup.
+ * UTC timestamps are converted to the US business day (BUSINESS_TZ) so loads near midnight don't
+ * land on the wrong day — the usual cause of an off-by-one versus Turvo's Shipment Summary.
+ */
+export const shipDate = (l: Pick<Load, 'pickupDate' | 'deliveryDate'>) => toBusinessDate(l.pickupDate || l.deliveryDate);
 
+/** What the Booked / Locked toggle means. Shown as a tooltip next to the toggle. */
+export const VIEW_MODE_HELP =
+  'Both views filter by pickup date (delivery date if there is no pickup), excluding canceled and draft loads. ' +
+  'Booked = every load picked up in the period. Locked = only the loads whose financials are final: ' +
+  'status Ready for Billing or Completed, or a ready-to-bill date in Turvo.';
+
+/**
+ * Click-to-filter on the Executive Overview (a customer, broker or lane row).
+ * One matcher so the KPIs, charts and Business Intelligence all apply it the same way.
+ */
+export type Focus = { type: 'customer' | 'broker' | 'lane'; value: string } | null;
+export const customerOf = (l: Pick<Load, 'customerName'>) => l.customerName?.trim() || 'Unknown';
+export function matchesFocus(l: ComputedLoad, focus: Focus): boolean {
+  if (!focus) return true;
+  if (focus.type === 'customer') return customerOf(l) === focus.value;
+  if (focus.type === 'broker') return ownerOf(l) === focus.value;
+  return l.lane === focus.value;
+}
+
+/**
+ * Rank tables hide entities with too few loads to be meaningful. A fixed 10 emptied every
+ * table on short ranges (Oct 1–7 had 13 loads in total), so the bar scales with the range.
+ */
+export const minRankLoads = (r: DateRange) => (daysInRange(r) >= 28 ? 10 : daysInRange(r) >= 14 ? 5 : 2);
 /** Every non-date filter. Used for the current AND comparison period, on every page. */
 export function matchesFilters(l: Load, f: Filters): boolean {
   if (!isActiveLoad(l)) return false;

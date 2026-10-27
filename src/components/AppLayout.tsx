@@ -9,6 +9,7 @@ import { useRole } from '@/auth/useRole';
 import { isActiveLoad } from '@/lib/computeLoads';
 import DateInputUS from '@/components/DateInputUS';
 import TeamFilter from '@/components/TeamFilter';
+import { VIEW_MODE_HELP } from '@/lib/filters';
 
 const navItems: { id: ViewType; label: string; icon: React.ElementType }[] = [
   { id: 'dashboard', label: 'Executive Overview', icon: LayoutDashboard },
@@ -141,7 +142,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <div className="flex items-center gap-2 flex-wrap">
             {/* Timeframe Preset */}
             <Select value={timeframePreset} onValueChange={v => setTimeframePreset(v as any)}>
-              <SelectTrigger className="h-9 w-28 text-xs"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="h-9 w-28 text-xs" title={VIEW_MODE_HELP}><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="rolling7">Rolling 7</SelectItem>
                 <SelectItem value="rolling30">Rolling 30</SelectItem>

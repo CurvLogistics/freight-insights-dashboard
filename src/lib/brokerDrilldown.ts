@@ -1,5 +1,6 @@
 import type { ComputedLoad } from '@/types/loads';
 import { hasFinancials, finRev, finCost } from '@/lib/computeLoads';
+import { ownerOf } from '@/lib/filters';
 
 export interface DrillRow {
   name: string;
@@ -39,7 +40,7 @@ const m = new Map<string, { loads: number; fin: number; revenue: number; cost: n
 
 /** Top lanes and top customers for one broker / operator, ranked by volume (load count). */
 export function brokerDrilldown(loads: ComputedLoad[], broker: string, limit = 10) {
-  const mine = loads.filter(l => (l.broker || 'Unassigned') === broker);
+  const mine = loads.filter(l => ownerOf(l) === broker);
   return {
     loads: mine,
     lanes: group(mine, l => l.lane, limit),

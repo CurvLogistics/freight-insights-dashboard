@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Download } from 'lucide-react';
 import type { Load } from '@/types/loads';
 import { formatUSDate } from '@/lib/dates';
+import { laneOf } from '@/lib/computeLoads';
 
 const money = (n?: number) => (n != null ? `$${Math.round(n).toLocaleString('en-US')}` : '—');
 
@@ -49,8 +50,7 @@ export default function LoadListDrawer({
     [loads, account],
   );
 
-  const lane = (l: Load) =>
-    `${[l.originCity, l.originState].filter(Boolean).join(', ') || '?'} → ${[l.destinationCity, l.destinationState].filter(Boolean).join(', ') || '?'}`;
+  const lane = (l: Load) => laneOf(l); // same normalized lane name as every table
 
   const exportCsv = () => {
     const header = ['Load', 'Customer', 'Carrier', 'Broker', 'Lane', 'Pickup', 'Status', 'Revenue', 'Cost', ...extraColumns.map(c => c.label)];

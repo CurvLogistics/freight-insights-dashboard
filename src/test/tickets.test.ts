@@ -8,10 +8,19 @@ import { brokerDrilldown } from '@/lib/brokerDrilldown';
 import { summarizeCarriers, mostRecentCarrier } from '@/lib/laneCarriers';
 import { parseDelayReason, summarizeOtd } from '@/lib/delayReasons';
 import { matchesFilters, type Filters } from '@/lib/filters';
+import { toBusinessDate } from '@/lib/dates';
+import { selectLoads, shipDate, matchesFocus, minRankLoads, ownerOf, aggregate, groupBy } from '@/lib/filters';
+import { laneOf } from '@/lib/computeLoads';
 
 const rescheduled = (extra: Partial<Load>): Load => ({
   loadId: 'T-1', serviceSource: 'turvo', shipmentStatus: 'Delivered',
   onTimeDelivery: 'Late', deliveryRescheduled: true, appointmentShiftHours: 24, ...extra,
+});
+
+const baseFilters: Filters = { dateRange: { start: '2026-10-01', end: '2026-10-07' }, excludedTeams: [], owner: 'all', equipmentType: 'all', search: '' };
+const mk = (id: string, extra: Partial<Load> = {}): Load => ({
+  loadId: id, shipmentStatus: 'Delivered', pickupDate: '2026-10-03', revenue: 1000, carrierCost: 800,
+  originCity: 'Hutchins', originState: 'TX', destinationCity: 'Bronx', destinationState: 'NY', ...extra,
 });
 
 describe('reschedules and on-time %', () => {
@@ -178,5 +187,78 @@ describe('Delay reasons (tickets 13–14)', () => {
     expect(s.excludedCustomer).toBe(1);
     expect(s.excludedShipper).toBe(1);
     expect(s.carrierLate).toBe(1);
+  });
+});
+
+describe('QA: dates use the US business day', () => {
+  it('moves a UTC timestamp after midnight back to the US evening', () => {
+    expect(toBusinessDate('2026-10-08T02:30:00Z')).toBe('2026-10-07');
+    expect(toBusinessDate('2026-10-08T14:00:00Z')).toBe('2026-10-08');
+  });
+  it('keeps plain dates and local/offset timestamps as written', () => {
+    expect(toBusinessDate('2026-10-08')).toBe('2026-10-08');
+    expect(toBusinessDate('2026-10-07T22:00:00-05:00')).toBe('2026-10-07');
+    expect(toBusinessDate('2026-10-07T22:00:00')).toBe('2026-10-07');
+  });
+  it('a pickup late on the last evening stays inside the range', () => {
+    const l = mk('A', { pickupDate: '2026-10-08T01:00:00Z' }); // Oct 7, 9 PM ET
+    expect(shipDate(l)).toBe('2026-10-07');
+    expect(selectLoads([l], baseFilters, baseFilters.dateRange, 'booked')).toHaveLength(1);
+  });
+});
+
+describe('QA: Booked vs Locked use the same date and exclude cancellations', () => {
+  const loads = [
+    mk('B1'), mk('B2', { shipmentStatus: 'Ready for Billing' }), mk('B3', { readyToBillDate: '2026-10-05' }),
+    mk('C1', { shipmentStatus: 'Cancelled' }), mk('C2', { shipmentStatus: 'Canceled - customer' }),
+  ];
+  it('Booked = all active loads in range; Locked = the finalized subset', () => {
+    expect(selectLoads(loads, baseFilters, baseFilters.dateRange, 'booked').map(l => l.loadId)).toEqual(['B1', 'B2', 'B3']);
+    expect(selectLoads(loads, baseFilters, baseFilters.dateRange, 'locked').map(l => l.loadId)).toEqual(['B2', 'B3']);
+  });
+});
+
+describe('QA: lanes differing only by capitalization are one lane', () => {
+  it('normalizes case and spacing', () => {
+    expect(laneOf(mk('X', { originCity: 'HUTCHINS ', originState: 'tx', destinationCity: 'bronx', destinationState: 'NY' })))
+      .toBe(laneOf(mk('Y')));
+    expect(laneOf(mk('Y'))).toBe('Hutchins, TX → Bronx, NY');
+  });
+});
+
+describe('QA: row-click focus and broker totals reconcile', () => {
+  const loads = selectLoads([
+    mk('1', { customerName: 'Katzman', broker: 'Jaime Morales' }),
+    mk('2', { customerName: 'Katzman ', broker: ' Jaime Morales' }),
+    mk('3', { customerName: 'Other', broker: '' }),
+  ], baseFilters, baseFilters.dateRange, 'booked');
+
+  it('focus matches the same names the rank tables show (trimmed, Unassigned/Unknown)', () => {
+    expect(loads.filter(l => matchesFocus(l, { type: 'customer', value: 'Katzman' }))).toHaveLength(2);
+    expect(loads.filter(l => matchesFocus(l, { type: 'broker', value: 'Jaime Morales' }))).toHaveLength(2);
+    expect(loads.filter(l => matchesFocus(l, { type: 'broker', value: 'Unassigned' }))).toHaveLength(1);
+  });
+  it('broker totals add up to the overall load count and revenue', () => {
+    const byBroker = [...groupBy(loads, ownerOf).values()].map(aggregate);
+    expect(byBroker.reduce((s, a) => s + a.loads, 0)).toBe(aggregate(loads).loads);
+    expect(byBroker.reduce((s, a) => s + a.revenue, 0)).toBe(aggregate(loads).revenue);
+  });
+});
+
+describe('QA: rank-table minimum scales with the range', () => {
+  it('short ranges no longer require 10 loads', () => {
+    expect(minRankLoads({ start: '2026-10-01', end: '2026-10-07' })).toBe(2);
+    expect(minRankLoads({ start: '2026-10-01', end: '2026-10-14' })).toBe(5);
+    expect(minRankLoads({ start: '2026-09-27', end: '2026-10-26' })).toBe(10);
+  });
+});
+
+describe('QA: loads missing carrier cost stay out of profit and margin', () => {
+  it('counts revenue but not margin for cost-pending loads', () => {
+    const a = aggregate([mk('F1'), mk('F2', { carrierCost: undefined })]);
+    expect(a.loads).toBe(2);
+    expect(a.revenue).toBe(2000);
+    expect(a.finLoads).toBe(1);
+    expect(a.margin).toBeCloseTo(20);
   });
 });

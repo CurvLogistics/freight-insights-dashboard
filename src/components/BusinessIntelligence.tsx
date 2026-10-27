@@ -1,10 +1,11 @@
 import { useMemo } from 'react';
 import { useData } from '@/context/DataContext';
+import type { ComputedLoad } from '@/types/loads';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Activity, TrendingDown, Target, AlertTriangle } from 'lucide-react';
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '@/components/ui/table';
 import { laneOf } from '@/lib/computeLoads';
-import { aggregate, groupBy, daysInRange } from '@/lib/filters';
+import { aggregate, groupBy, daysInRange, minRankLoads } from '@/lib/filters';
 import { formatUSDate } from '@/lib/dates';
 import { buildLaneVolatility, FLOOR_TARGET, STRETCH_TARGET } from '@/lib/laneVolatility';
 
@@ -40,9 +41,18 @@ interface LaneComparison {
   actions: string[];
 }
 
-export default function BusinessIntelligence() {
-  const { loads, prevLoads, compWindow, filters, comparisonMode } = useData();
+interface BusinessIntelligenceProps {
+  /** Loads for the current / comparison period. Defaults to the global filtered loads; the
+   *  Executive Overview passes its row-click-filtered loads so this section follows them too. */
+  loads?: ComputedLoad[];
+  prevLoads?: ComputedLoad[];
+}
 
+export default function BusinessIntelligence(props: BusinessIntelligenceProps = {}) {
+  const ctx = useData();
+  const { compWindow, filters, comparisonMode } = ctx;
+  const loads = props.loads ?? ctx.loads;
+  const prevLoads = props.prevLoads ?? ctx.prevLoads;
   const data = useMemo(() => {
     const curLoads = loads;
     const cur = aggregate(curLoads);
@@ -121,7 +131,8 @@ export default function BusinessIntelligence() {
   // Margin compression needs a margin in both periods.
   const MIN_COMPRESSION_LOADS = 3;
   const marginCompression = [...lanes].filter(l => l.loads >= MIN_COMPRESSION_LOADS && l.loadsPrev >= MIN_COMPRESSION_LOADS).sort((a, b) => a.marginDelta - b.marginDelta).slice(0, 10);
-  const minActionLoads = filters.owner === 'all' ? 10 : 3;
+  // Same scaling as the rank tables: a fixed 10 left this empty on short ranges.
+  const minActionLoads = filters.owner === 'all' ? minRankLoads(filters.dateRange) : Math.min(3, minRankLoads(filters.dateRange));
   const actionNeeded = lanes.filter(l => l.actions.length > 0 && l.loads >= minActionLoads).sort((a, b) => a.marginCur - b.marginCur).slice(0, 15);
 
   const colorCls = (v: number, invert = false) => {
@@ -190,7 +201,7 @@ export default function BusinessIntelligence() {
                 </TableHeader>
                 <TableBody>
                   {costMovement.length === 0 && (
-                    <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground text-xs py-8">No comparison data available</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground text-xs py-8">  {cur.loads === 0 ? 'No loads in this period' : 'No comparison data available'}</TableCell></TableRow>
                   )}
                   {costMovement.map(l => (
                     <TableRow key={l.name} className="even:bg-muted/30">
@@ -241,7 +252,7 @@ export default function BusinessIntelligence() {
                 </TableHeader>
                 <TableBody>
                   {marginCompression.length === 0 && (
-                    <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground text-xs py-8">No comparison data available</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground text-xs py-8">  {!hasPrev ? 'No comparison period data' : `No lane with ${MIN_COMPRESSION_LOADS}+ loads in both periods`}</TableCell></TableRow>
                   )}
                   {marginCompression.map(l => (
                     <TableRow key={l.name} className="even:bg-muted/30">
@@ -331,7 +342,7 @@ export default function BusinessIntelligence() {
                 </TableHeader>
                 <TableBody>
                   {actionNeeded.length === 0 && (
-                    <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground text-xs py-8">No actions flagged</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground text-xs py-8">  {`No actions flagged on lanes with ${minActionLoads}+ loads`}</TableCell></TableRow>
                   )}
                   {actionNeeded.map(l => (
                     <TableRow key={l.name} className="even:bg-muted/30">

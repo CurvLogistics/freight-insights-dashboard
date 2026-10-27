@@ -1,5 +1,5 @@
 import type { Load } from '@/types/loads';
-import { formatUSDate } from '@/lib/dates';
+import { formatUSDate, toBusinessDate } from '@/lib/dates';
 
 export type ComparisonMode = 'prior' | 'yoy';
 
@@ -34,8 +34,9 @@ function shiftYears(d: string, years: number) {
   return toISO(target.getTime());
 }
 
+/** Same rule as filters.shipDate: pickup (else delivery) date, UTC timestamps moved to the US business day. */
 export const shipmentDate = (l: Pick<Load, 'pickupDate' | 'deliveryDate'>) =>
-  (l.pickupDate || l.deliveryDate || '').slice(0, 10);
+  toBusinessDate(l.pickupDate || l.deliveryDate);
 
 /** Earliest / latest shipment date in the dataset. */
 export function getDatasetBounds(loads: Load[]): { min: string; max: string } {

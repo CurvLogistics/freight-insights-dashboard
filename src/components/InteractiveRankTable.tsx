@@ -26,6 +26,10 @@ interface Props {
   maxRows?: number;
   onRowClick?: (name: string) => void;
   selectedRow?: string | null;
+    /** Shown when the table has no rows before the table's own search/min-loads filters. */
+  emptyMessage?: string;
+  /** Explains what the table includes, e.g. how many loads are hidden by the minimum. */
+  footnote?: string;
 }
 
 const columns: { key: SortKey; label: string; align: 'left' | 'right'; width?: string }[] = [
@@ -37,8 +41,8 @@ const columns: { key: SortKey; label: string; align: 'left' | 'right'; width?: s
   { key: 'margin', label: 'Margin %', align: 'right', width: 'w-[80px]' },
 ];
 
-export default function InteractiveRankTable({ title, data, defaultSort, defaultDir, highlight, maxRows = 10, onRowClick, selectedRow }: Props) {
-  const [sortKey, setSortKey] = useState<SortKey>(defaultSort);
+export default function InteractiveRankTable({ title, data, defaultSort, defaultDir, highlight, maxRows = 10, onRowClick, selectedRow, emptyMessage, footnote }: Props) {
+const [sortKey, setSortKey] = useState<SortKey>(defaultSort);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>(defaultDir);
   const [nameFilter, setNameFilter] = useState('');
   const [minLoads, setMinLoads] = useState('');
@@ -139,13 +143,14 @@ export default function InteractiveRankTable({ title, data, defaultSort, default
                 </tr>
               ))}
               {sorted.length === 0 && (
-                <tr><td colSpan={6} className="px-4 py-6 text-center text-muted-foreground text-xs">No results match filters</td></tr>
+                  <tr><td colSpan={6} className="px-4 py-6 text-center text-muted-foreground text-xs">{data.length === 0 && emptyMessage ? emptyMessage : 'No results match filters'}</td></tr>
               )}
             </tbody>
           </table>
         </div>
         <div className="px-4 py-1.5 text-xs text-muted-foreground border-t">
           Showing {sorted.length} of {filtered.length} rows
+          {footnote && <span className="block mt-0.5">{footnote}</span>}
         </div>
       </CardContent>
     </Card>

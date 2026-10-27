@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Search, AlertTriangle, TrendingDown, ArrowUpDown, ArrowUp, ArrowDown, MapPin, Filter, ChevronDown, ChevronRight, Truck, Info } from 'lucide-react';
 import { hasFinancials, finRev, finCost } from '@/lib/computeLoads';
-import { selectLoads } from '@/lib/filters';
+import { selectLoads, shipDate } from '@/lib/filters';
 import { Checkbox } from '@/components/ui/checkbox';
 import InfoTip from '@/components/InfoTip';
 import { DataTrustBadge } from '@/components/DataTrust';
@@ -150,9 +150,8 @@ function toTitleCase(value?: string): string {
     .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
-function getShipmentDate(load: Pick<Load, 'pickupDate' | 'deliveryDate'>): string {
-  return (load.pickupDate || load.deliveryDate || '').slice(0, 10);
-}
+/** Same rule as the date filter (filters.shipDate), so lane history and the period agree. */
+const getShipmentDate = shipDate;
 
 function getLaneIdentity(
   load: Pick<ComputedLoad, 'lane' | 'stateLane' | 'originCity' | 'originState' | 'destinationCity' | 'destinationState'>,
