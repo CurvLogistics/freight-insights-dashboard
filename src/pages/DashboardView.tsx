@@ -9,11 +9,14 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import InteractiveRankTable from '@/components/InteractiveRankTable';
 import ComparisonRankTable, { ComparisonRow } from '@/components/ComparisonRankTable';
 import BusinessIntelligence from '@/components/BusinessIntelligence';
-import { finRev, finCost, DATA_QUALITY_CHECKS, getDataQualityLoads, type DataQualityIssue } from '@/lib/computeLoads';
+import { finRev, finCost, DATA_QUALITY_CHECKS, getDataQualityLoads, computeDataQuality, type DataQualityIssue } from '@/lib/computeLoads';
 import LoadListDrawer from '@/components/LoadListDrawer';
-import { aggregate, groupBy, shipDate, teamOf, ownerOf, customerOf, matchesFocus, minRankLoads, VIEW_MODE_HELP, type Focus } from '@/lib/filters';
-import { formatUSShortDate } from '@/lib/dates';
-
+import { aggregate, groupBy, shipDate, teamOf, ownerOf, customerOf, matchesFocus, matchesFilters, selectLoads, minRankLoads, daysInRange, VIEW_MODE_HELP, type Focus } from '@/lib/filters';
+import { formatUSShortDate, formatUSDate } from '@/lib/dates';
+import { getDatasetBounds } from '@/lib/comparison';
+import { LANE_COMPARE_PRESETS, laneCompareRanges, type LaneComparePreset, type LaneCompareRanges } from '@/lib/laneComparison';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import DateInputUS from '@/components/DateInputUS';
 
 const fmt = (n?: number) => n != null ? `$${Math.round(n).toLocaleString('en-US')}` : '—';
 const pct = (n?: number) => n != null ? `${n.toFixed(1)}%` : '—';
@@ -27,7 +30,7 @@ const fmtCompact = (n: number) => {
 const SHOW_BROKER_COMPARISON = false;
 
 export default function DashboardView() {
-  const { loads, prevLoads, compWindow, rawLoads, dataQuality, comparisonMode, viewMode, filters } = useData();
+  const { loads, prevLoads, compWindow, rawLoads, comparisonMode, viewMode, filters } = useData();
   const [dashFilter, setDashFilter] = useState<Focus>(null);
 
   // A row click (customer / broker / lane) filters EVERY section on this page, including
@@ -94,9 +97,27 @@ export default function DashboardView() {
     SHOW_BROKER_COMPARISON && hasPrev ? buildComparisonRows(ownerOf, ownerOf, loads, prevLoads) : [],
     [hasPrev, loads, prevLoads, buildComparisonRows]);
 
-  const compLanes = useMemo(() =>
-    hasPrev ? buildComparisonRows(l => l.lane, l => l.lane, loads, prevLoads) : [],
-  [hasPrev, loads, prevLoads, buildComparisonRows]);
+  // Lane Comparison has its own two date ranges (RPT-09), default last full Mon–Sun week vs the week before. Same
+  // owner / team / equipment / search filters and Booked-Locked mode as the rest of the page.
+  const [lanePreset, setLanePreset] = useState<LaneComparePreset>('lastWeek');
+  const [laneRanges, setLaneRanges] = useState<LaneCompareRanges>(() => laneCompareRanges('lastWeek'));
+  const pickLanePreset = (p: LaneComparePreset) => {
+    setLanePreset(p);
+    if (p !== 'custom') setLaneRanges(laneCompareRanges(p));
+  };
+  const setLaneDate = (which: 'a' | 'b', side: 'start' | 'end', iso: string) => {
+    setLanePreset('custom');
+    setLaneRanges(r => ({ ...r, [which]: { ...r[which], [side]: iso } }));
+  };
+  const laneRangeError = laneRanges.a.start > laneRanges.a.end || laneRanges.b.start > laneRanges.b.end
+    ? 'Each range needs a start date on or before its end date.' : null;
+  const datasetStart = useMemo(() => getDatasetBounds(rawLoads).min, [rawLoads]);
+  const compLanes = useMemo(() => {
+    if (laneRangeError) return [];
+    const a = selectLoads(rawLoads, filters, laneRanges.a, viewMode);
+    const b = selectLoads(rawLoads, filters, laneRanges.b, viewMode);
+    return buildComparisonRows(l => l.lane, l => l.lane, a, b);
+  }, [rawLoads, filters, laneRanges, viewMode, laneRangeError, buildComparisonRows]);
 
   // Revenue trend
   const trendData = [...groupBy(filteredLoads.filter(l => shipDate(l)), l => shipDate(l)).entries()]
@@ -143,13 +164,15 @@ export default function DashboardView() {
     setDashFilter(prev => prev?.type === type && prev.value === name ? null : { type, value: name });
   }, []);
 
-  const dq = dataQuality;
+  // Data Quality follows the owner / team / equipment / search filters (RPT-07) but covers all dates.
+  const scopedRaw = useMemo(() => rawLoads.filter(l => matchesFilters(l, filters)), [rawLoads, filters]);
+  const dq = useMemo(() => computeDataQuality(scopedRaw), [scopedRaw]);
    const qualityItems = (Object.keys(DATA_QUALITY_CHECKS) as DataQualityIssue[]).map(key => {
     const value = dq[key];
     return { key, label: DATA_QUALITY_CHECKS[key].label, value, pct: dq.totalLoads ? (value / dq.totalLoads) * 100 : 0 };
   });
   const [dqIssue, setDqIssue] = useState<DataQualityIssue | null>(null);
-  const dqLoads = useMemo(() => (dqIssue ? getDataQualityLoads(rawLoads, dqIssue) : []), [rawLoads, dqIssue]);
+  const dqLoads = useMemo(() => (dqIssue ? getDataQualityLoads(scopedRaw, dqIssue) : []), [scopedRaw, dqIssue]);
 
   const compLabel = comparisonMode === 'yoy' ? 'YoY' : 'Prior Period';
 
@@ -201,7 +224,7 @@ export default function DashboardView() {
           value={dq.totalLoads.toLocaleString('en-US')}
           icon={Package}
           color="primary"
-          tip={`Active loads, all dates. Excludes ${(rawLoads.length - dq.totalLoads).toLocaleString('en-US')} canceled/draft loads (${rawLoads.length.toLocaleString('en-US')} synced in total) — same base as Data Quality.`}
+          tip={`Active loads, all dates, for the current owner / team / equipment filters. Canceled and draft loads are excluded (${rawLoads.length.toLocaleString('en-US')} synced in total) — same base as Data Quality.`}
         />
         <KPICard title="Filtered Loads" value={totalLoads.toString()} icon={Package} color="primary"
           comparison={prevPeriodMetrics ? { current: totalLoads, previous: prevPeriodMetrics.loads } : undefined} isCount compLabel={prevPeriodMetrics?.modeLabel} />
@@ -285,14 +308,43 @@ export default function DashboardView() {
         </Card>
       </div>
 
-      {/* Comparison Tables (when prior period data exists) */}
-      {hasPrev && (
-        <>
-          <h3 className="text-lg font-bold mt-2">Period Comparison — {compLabel}</h3>
-            {SHOW_BROKER_COMPARISON && <ComparisonRankTable title={`Broker Comparison (${compLabel})`} data={compBrokers} onRowClick={handleRowClick('broker')} selectedRow={dashFilter?.type === 'broker' ? dashFilter.value : null} />}
-          <ComparisonRankTable title={`Lane Comparison (${compLabel})`} data={compLanes} onRowClick={handleRowClick('lane')} selectedRow={dashFilter?.type === 'lane' ? dashFilter.value : null} />
-        </>
+           {SHOW_BROKER_COMPARISON && hasPrev && (
+        <ComparisonRankTable title={`Broker Comparison (${compLabel})`} data={compBrokers} onRowClick={handleRowClick('broker')} selectedRow={dashFilter?.type === 'broker' ? dashFilter.value : null} />
       )}
+
+      {/* Lane Comparison — its own two date ranges (RPT-09) */}
+      <div className="space-y-2">
+        <div className="flex flex-wrap items-end gap-3">
+          <h3 className="text-lg font-bold mr-auto">Lane Comparison</h3>
+          <Select value={lanePreset} onValueChange={v => pickLanePreset(v as LaneComparePreset)}>
+            <SelectTrigger className="h-9 w-52 text-xs" aria-label="Lane comparison period"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {LANE_COMPARE_PRESETS.map(p => <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="font-medium w-16">This period</span>
+          <DateInputUS value={laneRanges.a.start} onChange={iso => setLaneDate('a', 'start', iso)} className="w-36" />
+          <span className="text-muted-foreground">to</span>
+          <DateInputUS value={laneRanges.a.end} onChange={iso => setLaneDate('a', 'end', iso)} className="w-36" />
+          <span className="text-muted-foreground ml-1">({laneRangeError ? '—' : daysInRange(laneRanges.a)} days)</span>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="font-medium w-16">Compared to</span>
+          <DateInputUS value={laneRanges.b.start} onChange={iso => setLaneDate('b', 'start', iso)} className="w-36" />
+          <span className="text-muted-foreground">to</span>
+          <DateInputUS value={laneRanges.b.end} onChange={iso => setLaneDate('b', 'end', iso)} className="w-36" />
+          <span className="text-muted-foreground ml-1">({laneRangeError ? '—' : daysInRange(laneRanges.b)} days)</span>
+        </div>
+        {laneRangeError && <p className="text-xs text-destructive">{laneRangeError}</p>}
+        {!laneRangeError && datasetStart && laneRanges.b.start < datasetStart && (
+          <p className="text-xs text-warning">Synced data starts {formatUSDate(datasetStart)}, so the comparison period is incomplete. Import older loads in Settings to fill it.</p>
+        )}
+        <ComparisonRankTable
+          title={`${formatUSDate(laneRanges.a.start)} – ${formatUSDate(laneRanges.a.end)} vs ${formatUSDate(laneRanges.b.start)} – ${formatUSDate(laneRanges.b.end)}`}
+          data={compLanes} onRowClick={handleRowClick('lane')} selectedRow={dashFilter?.type === 'lane' ? dashFilter.value : null} />
+      </div>
 
       {/* Current-period rank tables (always shown) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

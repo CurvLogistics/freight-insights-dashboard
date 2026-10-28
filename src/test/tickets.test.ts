@@ -11,6 +11,8 @@ import { matchesFilters, type Filters } from '@/lib/filters';
 import { toBusinessDate } from '@/lib/dates';
 import { selectLoads, shipDate, matchesFocus, minRankLoads, ownerOf, aggregate, groupBy, businessToday, businessTodayDate, addDays } from '@/lib/filters';
 import { laneOf } from '@/lib/computeLoads';
+import { laneCompareRanges } from '@/lib/laneComparison';
+import { normalizeCityNames } from '@/lib/cityNames';
 
 const rescheduled = (extra: Partial<Load>): Load => ({
   loadId: 'T-1', serviceSource: 'turvo', shipmentStatus: 'Delivered',
@@ -278,5 +280,41 @@ describe('QA: days-since uses the real business date, not a fixed demo date', ()
     const today = businessTodayDate();
     const last = new Date(addDays(businessToday(), -4) + 'T00:00:00Z');
     expect(Math.round((today.getTime() - last.getTime()) / 86400000)).toBe(4);
+  });
+});
+
+describe('RPT-19: city spellings merged from the data, not a fixed list', () => {
+  const ld = (id: string, dest: string, st = 'NY') => mk(id, { originCity: 'Rio Rico', originState: 'AZ', destinationCity: dest, destinationState: st });
+  it('merges "The Bronx" into the more common "Bronx"', () => {
+    const out = normalizeCityNames([ld('1', 'Bronx'), ld('2', 'Bronx'), ld('3', 'The Bronx')]);
+    expect(new Set(out.map(laneOf))).toEqual(new Set(['Rio Rico, AZ → Bronx, NY']));
+  });
+  it('merges St. / Saint and ignores punctuation', () => {
+    const out = normalizeCityNames([ld('1', 'St. Louis', 'MO'), ld('2', 'Saint Louis', 'MO'), ld('3', 'St Louis', 'MO')]);
+    expect(new Set(out.map(l => l.destinationCity)).size).toBe(1);
+  });
+  it('leaves a "The" city alone when no other spelling exists, and never merges across states', () => {
+    const out = normalizeCityNames([ld('1', 'The Dalles', 'OR'), ld('2', 'Bronx', 'NY'), ld('3', 'The Bronx', 'TX')]);
+    expect(out.map(l => l.destinationCity)).toEqual(['The Dalles', 'Bronx', 'The Bronx']);
+  });
+});
+
+describe('RPT-09: Lane Comparison uses Mon–Sun weeks', () => {
+  // 2026-10-28 is a Wednesday.
+  it('defaults to last full week vs the week before', () => {
+    const r = laneCompareRanges('lastWeek', '2026-10-28');
+    expect(r.a).toEqual({ start: '2026-10-19', end: '2026-10-25' });
+    expect(r.b).toEqual({ start: '2026-10-12', end: '2026-10-18' });
+  });
+  it('this week so far = Monday to yesterday, vs the same weekdays last week', () => {
+    const r = laneCompareRanges('thisWeek', '2026-10-28');
+    expect(r.a).toEqual({ start: '2026-10-26', end: '2026-10-27' });
+    expect(r.b).toEqual({ start: '2026-10-19', end: '2026-10-20' });
+  });
+  it('on a Monday, this week falls back to last full week', () => {
+    expect(laneCompareRanges('thisWeek', '2026-10-26')).toEqual(laneCompareRanges('lastWeek', '2026-10-26'));
+  });
+  it('on a Sunday, last week is the week that ended a week ago', () => {
+    expect(laneCompareRanges('lastWeek', '2026-11-01').a).toEqual({ start: '2026-10-19', end: '2026-10-25' });
   });
 });

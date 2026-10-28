@@ -3,6 +3,7 @@ import { Load, ComputedLoad, DataQuality, ViewType } from '@/types/loads';
 import { computeDataQuality, parseCSV, isActiveLoad } from '@/lib/computeLoads';
 import { useAuth } from '@clerk/react';
 import { fetchLoadsFromApi } from '@/lib/loadsRepository';
+import { normalizeCityNames } from '@/lib/cityNames';
 import { getComparisonWindow, type ComparisonMode, type ComparisonWindow } from '@/lib/comparison';
 import {
   type Filters, type TimeframePreset, type ViewMode,
@@ -80,7 +81,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setDataError(null);
     try {
       const { loads: apiLoads, lastSyncedAt: synced } = await fetchLoadsFromApi(getToken);
-      setRawLoads(dedupeLoads(apiLoads));
+      // One spelling per city ("The Bronx" / "Bronx"), so a lane is never split in two (RPT-19).
+      setRawLoads(normalizeCityNames(dedupeLoads(apiLoads)));
       setDataSource(apiLoads.length > 0 ? 'turvo' : 'none');
       setLastSyncedAt(synced);
       if (apiLoads.length === 0) setDataError('No Turvo loads synced yet. Run a sync from Settings.');
@@ -144,7 +146,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     setDataError(null);
-    setRawLoads(parsed);
+    setRawLoads(normalizeCityNames(parsed));
     setDataSource('csv');
   }, []);
 

@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Activity, TrendingDown, Target, AlertTriangle } from 'lucide-react';
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '@/components/ui/table';
 import { laneOf } from '@/lib/computeLoads';
-import { aggregate, groupBy, daysInRange, minRankLoads } from '@/lib/filters';
+import { aggregate, groupBy, daysInRange, minRankLoads, businessToday } from '@/lib/filters';
 import { formatUSDate } from '@/lib/dates';
 import { buildLaneVolatility, FLOOR_TARGET, STRETCH_TARGET } from '@/lib/laneVolatility';
 
@@ -158,6 +158,11 @@ export default function BusinessIntelligence(props: BusinessIntelligenceProps = 
             {formatUSDate(filters.dateRange.start)} – {formatUSDate(filters.dateRange.end)} ({daysInRange(filters.dateRange)} days)
             {hasPrev && compWindow.range && <> · vs {formatUSDate(compWindow.range.start)} – {formatUSDate(compWindow.range.end)}</>}
           </p>
+            {filters.dateRange.end >= businessToday() && (
+            <p className="text-xs text-warning mt-1">
+              This range includes today or later. Those loads usually have no carrier cost yet, so margin can read high — end the range yesterday for final numbers (RPT-08).
+            </p>
+          )}
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-4">

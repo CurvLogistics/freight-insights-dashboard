@@ -165,16 +165,9 @@ function getLaneIdentity(
       label: originState !== '?' && destinationState !== '?' ? `${originState} → ${destinationState}` : load.stateLane,
     };
   }
-  const originCity = normalizeToken(load.originCity);
-  const destinationCity = normalizeToken(load.destinationCity);
-  const originState = normalizeState(load.originState) || '?';
-  const destinationState = normalizeState(load.destinationState) || '?';
-  const originLabel = [toTitleCase(load.originCity), originState !== '?' ? originState : ''].filter(Boolean).join(', ');
-  const destinationLabel = [toTitleCase(load.destinationCity), destinationState !== '?' ? destinationState : ''].filter(Boolean).join(', ');
-  return {
-    key: `city:${originCity || '?'}|${originState}->${destinationCity || '?'}|${destinationState}`,
-    label: originLabel && destinationLabel ? `${originLabel} → ${destinationLabel}` : load.lane,
-  };
+  // City lanes use the shared lane name (laneOf), so Lane Intelligence counts exactly what
+  // the Executive Overview and Productivity count (RPT-19).
+  return { key: `city:${load.lane}`, label: load.lane };
 }
 
 function createEmptyPeriodStats(): LanePeriodStats {
@@ -309,9 +302,7 @@ function getEquipmentLabel(load: Pick<Load, 'equipmentType'>): string {
 }
 
 function buildLaneLabel(load: ComputedLoad): string {
-  const o = [toTitleCase(load.originCity), normalizeState(load.originState)].filter(Boolean).join(', ');
-  const d = [toTitleCase(load.destinationCity), normalizeState(load.destinationState)].filter(Boolean).join(', ');
-  return o && d ? `${o} → ${d}` : o || d || 'Unknown';
+  return load.lane || 'Unknown';
 }
 
 type ShipmentSortKey = 'date' | 'revenue' | 'cost' | 'margin';
@@ -448,7 +439,7 @@ export default function LanesView() {
       const c = toTitleCase(city);
       const state = normalizeState(st);
       if (!c || !state) return;
-      const key = `${normalizeToken(city)}|${state}`;
+      const key = `${normalizeToken(c)}|${state}`;
       const e = m.get(key) ?? { label: `${c}, ${state}`, key, asOrigin: 0, asDest: 0 };
       e[side]++;
       m.set(key, e);
