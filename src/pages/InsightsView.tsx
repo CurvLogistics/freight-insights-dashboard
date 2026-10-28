@@ -126,10 +126,16 @@ export default function InsightsView() {
     // What Changed — short, signal-focused
     const highlights: string[] = [];
     if (!hasComp) { /* no comparative highlights without comparison data */ }
-    else if (dLoads > 0 && dProfit < 0) highlights.push('Loads up, but profit down');
-    else if (dLoads > 0 && dRev <= 0) highlights.push('Volume up, revenue flat');
-    else if (dLoads > 0) highlights.push(`Loads up ${signed(dLoads)}`);
-    else if (dLoads < 0) highlights.push(`Volume down ${Math.abs(dLoads)} loads`);
+    else {
+      // Describe volume and revenue separately, using the actual direction of each.
+      // "Flat" only when revenue moved less than 2% vs the comparison period.
+      const revPct = prevRev > 0 ? (dRev / prevRev) * 100 : 0;
+      const volPart = dLoads > 0 ? `Volume up ${dLoads} loads` : dLoads < 0 ? `Volume down ${Math.abs(dLoads)} loads` : 'Volume flat';
+      const revPart = Math.abs(revPct) < 2 ? 'revenue flat'
+        : `revenue ${dRev > 0 ? 'up' : 'down'} ${fmt(Math.abs(dRev))} (${revPct > 0 ? '+' : ''}${revPct.toFixed(0)}%)`;
+      highlights.push(`${volPart}, ${revPart}`);
+      if (dLoads > 0 && dProfit < 0) highlights.push(`More loads but profit down ${fmt(Math.abs(dProfit))}`);
+    }
 
     if (hasComp && Math.abs(dMargin) >= 1) highlights.push(`Margin ${dMargin > 0 ? 'up' : 'down'} ${Math.abs(dMargin).toFixed(1)}pp ${vsLabel}`);
     if (compressed.length > 0) highlights.push(`Compression on ${compressed.map(c => c.lane).join(', ')}`);

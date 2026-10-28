@@ -4,16 +4,17 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { formatUSDate } from '@/lib/dates';
+import { businessTodayDate } from '@/lib/filters';
 
 export default function ExceptionsView() {
   const { loads } = useData();
   const [unbilledDays, setUnbilledDays] = useState(7);
 
-  const now = new Date('2026-04-01');
+  const now = businessTodayDate();
 
   const unbilled = loads.filter(l => {
     if (!l.readyToBillDate || l.invoiceSentDate) return false;
-    const readyDate = new Date(l.readyToBillDate);
+    const readyDate = new Date(l.readyToBillDate.slice(0, 10) + 'T00:00:00Z');
     const daysSinceReady = Math.floor((now.getTime() - readyDate.getTime()) / (1000 * 60 * 60 * 24));
     return daysSinceReady >= unbilledDays;
   });

@@ -38,7 +38,7 @@ export function laneOf(l: Pick<Load, 'originCity' | 'originState' | 'destination
 export const UNKNOWN_LANE = '? → ?';
 
 export function computeLoad(load: Load): ComputedLoad {
-  const grossProfit = (load.revenue != null && load.carrierCost != null) ? load.revenue - load.carrierCost : undefined;
+  const grossProfit = hasFinancials(load) ? load.revenue! - load.carrierCost! : undefined;
   const marginPercent = (grossProfit != null && load.revenue && load.revenue > 0) ? (grossProfit / load.revenue) * 100 : undefined;
 
   const lane = laneOf(load);
@@ -94,8 +94,15 @@ export function isActiveLoad(l: Pick<Load, 'shipmentStatus'>): boolean {
 /**
  * Profit and margin only use loads that have BOTH revenue and carrier cost.
  */
-type FinFields = Pick<Load, 'revenue' | 'carrierCost'>;
-export const hasFinancials = (l: FinFields): boolean => l.revenue != null && l.carrierCost != null;
+type FinFields = Pick<Load, 'revenue' | 'carrierCost'> & Partial<Pick<Load, 'carrierName'>>;
+/**
+ * Uncovered = no carrier assigned and no carrier cost yet. Turvo often reports $0 payable
+ * for these, which would otherwise read as a 100% margin. Treat the cost as pending:
+ * revenue still counts, profit/margin wait until a carrier is booked.
+ */
+export const isUncovered = (l: FinFields): boolean =>
+  !(l.carrierName || '').trim() && !l.carrierCost;
+export const hasFinancials = (l: FinFields): boolean => l.revenue != null && l.carrierCost != null && !isUncovered(l);
 export const finRev = (l: FinFields): number => (hasFinancials(l) ? l.revenue! : 0);
 export const finCost = (l: FinFields): number => (hasFinancials(l) ? l.carrierCost! : 0);
 

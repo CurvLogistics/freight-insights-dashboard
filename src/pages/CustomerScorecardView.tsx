@@ -9,6 +9,7 @@ import { ComputedLoad } from '@/types/loads';
 import { isScored, UNKNOWN_LANE } from '@/lib/computeLoads';
 import { summarizeOtd, type OtdSummary } from '@/lib/delayReasons';
 import { DataTrustBadge, DataWarnings } from '@/components/DataTrust';
+import { businessTodayDate } from '@/lib/filters';
 
 const fmt = (n?: number | null) => n != null ? `$${Math.round(n).toLocaleString('en-US')}` : '—';
 const pct = (n?: number | null) => n != null ? `${n.toFixed(1)}%` : '—';
@@ -60,7 +61,6 @@ interface CustomerRow {
 }
 
 const STALE_DAYS = 30;
-const TODAY = new Date('2026-04-02');
 
 export default function CustomerScorecardView() {
   const { loads } = useData();
@@ -174,7 +174,7 @@ export default function CustomerScorecardView() {
       let daysSinceLast: number | null = null;
       if (e.lastShipDate) {
         const last = new Date(e.lastShipDate + 'T00:00:00Z');
-        daysSinceLast = Math.round((TODAY.getTime() - last.getTime()) / 86400000);
+        daysSinceLast = Math.round((businessTodayDate().getTime() - last.getTime()) / 86400000);
       }
 
       // Flags
@@ -471,7 +471,7 @@ function ShareableDetail({ c, handleLaneSort, laneSortKey, laneSortDir }: {
           <div className="space-y-2">
             {[...c.lanes].sort((a, b) => b.loads - a.loads).slice(0, 5).map((l) => {
               const laneLastDate = l.lastShipDate ? new Date(l.lastShipDate + 'T00:00:00Z') : null;
-              const laneDaysAgo = laneLastDate ? Math.floor((TODAY.getTime() - laneLastDate.getTime()) / (1000 * 60 * 60 * 24)) : null;
+              const laneDaysAgo = laneLastDate ? Math.floor((businessTodayDate().getTime() - laneLastDate.getTime()) / (1000 * 60 * 60 * 24)) : null;
               const laneLastFmt = laneLastDate ? laneLastDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }) : '—';
               const activityStatus = laneDaysAgo == null ? 'Unknown' : laneDaysAgo <= 7 ? 'Active' : laneDaysAgo <= 21 ? 'Cooling' : 'At Risk';
               const statusColor = activityStatus === 'Active' ? 'text-green-600 bg-green-500/10' : activityStatus === 'Cooling' ? 'text-yellow-600 bg-yellow-500/10' : activityStatus === 'At Risk' ? 'text-red-600 bg-red-500/10' : 'text-muted-foreground bg-muted/20';

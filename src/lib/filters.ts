@@ -28,6 +28,8 @@ export function businessToday(now = new Date()): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: BUSINESS_TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
 }
 export const businessYesterday = (now = new Date()) => addDays(businessToday(now), -1);
+/** Midnight UTC of the current business day — use for "days  since" math against YYYY-MM-DD dates. */
+export const businessTodayDate = (now = new Date()) => new Date(businessToday(now) + 'T00:00:00Z');
 
 /** All presets end yesterday (last full US day). Rolling 30 = 30 full days. Pure UTC math, no local-time drift. */
 export function getPresetRange(preset: TimeframePreset, end = businessYesterday()): DateRange | null {

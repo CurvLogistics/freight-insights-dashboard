@@ -9,7 +9,7 @@ import { summarizeCarriers, mostRecentCarrier } from '@/lib/laneCarriers';
 import { parseDelayReason, summarizeOtd } from '@/lib/delayReasons';
 import { matchesFilters, type Filters } from '@/lib/filters';
 import { toBusinessDate } from '@/lib/dates';
-import { selectLoads, shipDate, matchesFocus, minRankLoads, ownerOf, aggregate, groupBy } from '@/lib/filters';
+import { selectLoads, shipDate, matchesFocus, minRankLoads, ownerOf, aggregate, groupBy, businessToday, businessTodayDate, addDays } from '@/lib/filters';
 import { laneOf } from '@/lib/computeLoads';
 
 const rescheduled = (extra: Partial<Load>): Load => ({
@@ -260,5 +260,23 @@ describe('QA: loads missing carrier cost stay out of profit and margin', () => {
     expect(a.revenue).toBe(2000);
     expect(a.finLoads).toBe(1);
     expect(a.margin).toBeCloseTo(20);
+  });
+});
+
+describe('QA: uncovered loads (no carrier, $0 payable) are cost-pending, not 100% margin', () => {
+  it('keeps revenue but leaves the load out of profit and margin', () => {
+    const a = aggregate([mk('F1'), mk('U1', { carrierName: '', carrierCost: 0 })]);
+    expect(a.loads).toBe(2);
+    expect(a.revenue).toBe(2000);
+    expect(a.finLoads).toBe(1);
+    expect(a.margin).toBeCloseTo(20);
+  });
+});
+
+describe('QA: days-since uses the real business date, not a fixed demo date', () => {
+  it('is never negative for a recent ship date', () => {
+    const today = businessTodayDate();
+    const last = new Date(addDays(businessToday(), -4) + 'T00:00:00Z');
+    expect(Math.round((today.getTime() - last.getTime()) / 86400000)).toBe(4);
   });
 });

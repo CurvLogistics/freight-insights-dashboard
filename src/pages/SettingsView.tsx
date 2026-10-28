@@ -7,7 +7,7 @@ import { useAuth } from '@clerk/react';
 import { triggerSync, importHistoricalLoads } from '@/lib/loadsRepository';
 import { useRole } from '@/auth/useRole';
 import UsersRolesCard from '@/components/UsersRolesCard';
-import { parseCSV } from '@/lib/computeLoads';
+import { parseCSV, isActiveLoad } from '@/lib/computeLoads';
 import { getDatasetBounds } from '@/lib/comparison';
 import { Loader2, AlertTriangle, RefreshCw, Download, Database, History, Upload } from 'lucide-react';
 import { formatUSDate, formatUSDateTime } from '@/lib/dates';
@@ -79,8 +79,11 @@ function TurvoSyncCard({ isAdmin }: { isAdmin: boolean }) {
             <p className="font-medium mt-0.5">{dataLoading ? 'Loading…' : sourceLabels[dataSource]}</p>
           </div>
           <div className="rounded-lg border p-3">
-            <p className="text-xs text-muted-foreground">Loads in memory</p>
+            <p className="text-xs text-muted-foreground">Loads synced</p>
             <p className="font-medium mt-0.5">{rawLoads.length.toLocaleString('en-US')}</p>
+            <p className="text-[11px] text-muted-foreground">
+              {rawLoads.filter(isActiveLoad).length.toLocaleString('en-US')} active · {rawLoads.filter(l => !isActiveLoad(l)).length.toLocaleString('en-US')} canceled/draft (excluded from metrics)
+            </p>
             {bounds.min && <p className="text-[11px] text-muted-foreground">{formatUSDate(bounds.min)} – {formatUSDate(bounds.max)}</p>}
           </div>
           <div className="rounded-lg border p-3">

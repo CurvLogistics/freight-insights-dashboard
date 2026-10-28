@@ -5,6 +5,7 @@ import { Download } from 'lucide-react';
 import type { Load } from '@/types/loads';
 import { formatUSDate } from '@/lib/dates';
 import { laneOf } from '@/lib/computeLoads';
+import { isUncovered } from '@/lib/computeLoads';
 
 const money = (n?: number) => (n != null ? `$${Math.round(n).toLocaleString('en-US')}` : '—');
 
@@ -128,8 +129,7 @@ export default function LoadListDrawer({
                         {highlightMissingFinancials && l.revenue == null ? 'missing' : money(l.revenue)}
                       </td>
                       <td className={`py-2 pr-2 text-right font-mono text-xs ${highlightMissingFinancials && l.carrierCost == null ? 'text-destructive font-semibold' : ''}`}>
-                        {highlightMissingFinancials && l.carrierCost == null ? 'missing' : money(l.carrierCost)}
-                      </td>
+                        {highlightMissingFinancials && l.carrierCost == null ? 'missing' : isUncovered(l) ? <span className="text-amber-600" title="No carrier assigned — cost pending, excluded from profit and margin">pending</span> : money(l.carrierCost)}                      </td>
                       {extraColumns.map(c => (
                         <td key={c.label} className={`py-2 pr-2 text-xs ${c.align === 'right' ? 'text-right font-mono' : ''}`}>{c.render(l)}</td>
                       ))}

@@ -10,9 +10,9 @@ import { ComputedLoad } from '@/types/loads';
 import { DataTrustBadge, DataWarnings } from '@/components/DataTrust';
 import { formatUSDate } from '@/lib/dates';
 import { summarizeOtd, type OtdSummary } from '@/lib/delayReasons';
+import { businessTodayDate } from '@/lib/filters';
 
 /* ── Weekly trend helpers ── */
-const REF_DATE = new Date('2026-04-02');
 
 function getWeekKey(dateStr: string): string {
   const d = new Date(dateStr + 'T00:00:00Z');
@@ -24,7 +24,7 @@ function getWeekKey(dateStr: string): string {
 
 function buildWeekBuckets(numWeeks: number): string[] {
   const buckets: string[] = [];
-  const cur = new Date(REF_DATE);
+  const cur = businessTodayDate();
   const day = cur.getUTCDay();
   const mon = new Date(cur);
   mon.setUTCDate(mon.getUTCDate() - ((day + 6) % 7));
@@ -36,7 +36,6 @@ function buildWeekBuckets(numWeeks: number): string[] {
   return buckets;
 }
 
-const WEEK_BUCKETS = buildWeekBuckets(8);
 
 interface WeeklyTrend {
   weeks: { weekStart: string; loads: number }[];
@@ -46,6 +45,7 @@ interface WeeklyTrend {
 
 function computeWeeklyTrend(shipDates: string[]): WeeklyTrend {
   const counts = new Map<string, number>();
+  const WEEK_BUCKETS = buildWeekBuckets(8);
   WEEK_BUCKETS.forEach(w => counts.set(w, 0));
   shipDates.forEach(d => {
     const wk = getWeekKey(d);
@@ -561,11 +561,10 @@ export default function CarrierScorecardView() {
 }
 
 /* ── Shareable (carrier-facing) expanded detail ── */
-const TODAY_CARRIER = new Date('2026-04-02');
 
 function ShareableDetail({ c }: { c: CarrierRow }) {
   const lastShipFmt = c.lastShipDate ? new Date(c.lastShipDate + 'T00:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) : '—';
-  const daysSinceLast = c.lastShipDate ? Math.floor((TODAY_CARRIER.getTime() - new Date(c.lastShipDate + 'T00:00:00Z').getTime()) / 86400000) : null;
+  const daysSinceLast = c.lastShipDate ? Math.floor((businessTodayDate().getTime() - new Date(c.lastShipDate + 'T00:00:00Z').getTime()) / 86400000) : null;
 
   const otpColor = (v: number | null) => v == null ? '' : v >= 95 ? 'text-green-600' : v >= 90 ? 'text-yellow-600' : 'text-red-600';
 
@@ -619,7 +618,7 @@ function ShareableDetail({ c }: { c: CarrierRow }) {
           <div className="space-y-2">
             {[...c.lanes].sort((a, b) => b.loads - a.loads).slice(0, 5).map(l => {
               const laneLastDate = l.lastShipDate ? new Date(l.lastShipDate + 'T00:00:00Z') : null;
-              const laneDaysAgo = laneLastDate ? Math.floor((TODAY_CARRIER.getTime() - laneLastDate.getTime()) / 86400000) : null;
+              const laneDaysAgo = laneLastDate ? Math.floor((businessTodayDate().getTime() - laneLastDate.getTime()) / 86400000) : null;
               const laneLastFmt = laneLastDate ? laneLastDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }) : '—';
               const activityStatus = laneDaysAgo == null ? 'Unknown' : laneDaysAgo <= 7 ? 'Active' : laneDaysAgo <= 21 ? 'Cooling' : 'At Risk';
               const statusColor = activityStatus === 'Active' ? 'text-green-600 bg-green-500/10' : activityStatus === 'Cooling' ? 'text-yellow-600 bg-yellow-500/10' : activityStatus === 'At Risk' ? 'text-red-600 bg-red-500/10' : 'text-muted-foreground bg-muted/20';
