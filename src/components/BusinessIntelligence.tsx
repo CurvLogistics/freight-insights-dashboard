@@ -39,6 +39,23 @@ interface LaneComparison {
   marginPrev: number;
   marginDelta: number;
   actions: string[];
+  /** Carrier on this lane with the lowest margin this period (ties: more late deliveries). */
+  worstCarrier: { name: string; loads: number; margin: number; late: number } | null;
+}
+
+/** Worst carrier on a lane: lowest margin among carriers with financials, then most late deliveries. */
+export function worstCarrierOn(ls: ComputedLoad[]): LaneComparison['worstCarrier'] {
+  const byCarrier = groupBy(ls.filter(l => l.carrierName?.trim()), l => l.carrierName!.trim());
+  let worst: LaneComparison['worstCarrier'] = null;
+  for (const [name, cl] of byCarrier) {
+    const a = aggregate(cl);
+    if (a.finLoads === 0) continue;
+    const late = cl.filter(l => l.onTimeDelivery === 'Late').length;
+    if (!worst || a.margin < worst.margin || (a.margin === worst.margin && late > worst.late)) {
+      worst = { name, loads: cl.length, margin: a.margin, late };
+    }
+  }
+  return worst;
 }
 
 interface BusinessIntelligenceProps {
@@ -87,6 +104,7 @@ export default function BusinessIntelligence(props: BusinessIntelligenceProps = 
         costDelta: comparable ? costD.abs : null, costDeltaPct: comparable ? costD.pct : null,
         revenueCur: c.revenue, costCur: c.cost, marginCur, marginPrev, marginDelta: marginCur - marginPrev,
         actions,
+        worstCarrier: cl.length > 0 ? worstCarrierOn(cl) : null,
       });
     });
 
@@ -130,7 +148,11 @@ export default function BusinessIntelligence(props: BusinessIntelligenceProps = 
 
   // Margin compression needs a margin in both periods.
   const MIN_COMPRESSION_LOADS = 3;
-  const marginCompression = [...lanes].filter(l => l.loads >= MIN_COMPRESSION_LOADS && l.loadsPrev >= MIN_COMPRESSION_LOADS).sort((a, b) => a.marginDelta - b.marginDelta).slice(0, 10);
+  // Only lanes whose margin actually went DOWN. Before, it took the 10 lowest changes, so on
+  // short ranges lanes whose margin rose were listed as "compression" (and the rest were cut off).
+  const marginCompression = [...lanes]
+    .filter(l => l.loads >= MIN_COMPRESSION_LOADS && l.loadsPrev >= MIN_COMPRESSION_LOADS && l.marginDelta < 0)
+    .sort((a, b) => a.marginDelta - b.marginDelta);
   // Same scaling as the rank tables: a fixed 10 left this empty on short ranges.
   const minActionLoads = filters.owner === 'all' ? minRankLoads(filters.dateRange) : Math.min(3, minRankLoads(filters.dateRange));
   const actionNeeded = lanes.filter(l => l.actions.length > 0 && l.loads >= minActionLoads).sort((a, b) => a.marginCur - b.marginCur).slice(0, 15);
@@ -257,7 +279,7 @@ export default function BusinessIntelligence(props: BusinessIntelligenceProps = 
                 </TableHeader>
                 <TableBody>
                   {marginCompression.length === 0 && (
-                    <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground text-xs py-8">  {!hasPrev ? 'No comparison period data' : `No lane with ${MIN_COMPRESSION_LOADS}+ loads in both periods`}</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground text-xs py-8">  {!hasPrev ? 'No comparison period data' : `No lane with ${MIN_COMPRESSION_LOADS}+ loads in both periods lost margin`}</TableCell></TableRow>
                   )}
                   {marginCompression.map(l => (
                     <TableRow key={l.name} className="even:bg-muted/30">
@@ -342,12 +364,13 @@ export default function BusinessIntelligence(props: BusinessIntelligenceProps = 
                     <TableHead className="text-xs text-right">Loads</TableHead>
                     <TableHead className="text-xs text-right">Margin %</TableHead>
                     <TableHead className="text-xs text-right">Margin Δ</TableHead>
+                    <TableHead className="text-xs">Worst carrier</TableHead>
                     <TableHead className="text-xs">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {actionNeeded.length === 0 && (
-                    <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground text-xs py-8">  {`No actions flagged on lanes with ${minActionLoads}+ loads`}</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground text-xs py-8">  {`No actions flagged on lanes with ${minActionLoads}+ loads`}</TableCell></TableRow>
                   )}
                   {actionNeeded.map(l => (
                     <TableRow key={l.name} className="even:bg-muted/30">
@@ -356,8 +379,19 @@ export default function BusinessIntelligence(props: BusinessIntelligenceProps = 
                       <TableCell className={`text-xs text-right font-mono ${l.marginCur < FLOOR_TARGET ? 'text-destructive' : 'text-warning'}`}>
                         {pct(l.marginCur)}
                       </TableCell>
-                      <TableCell className={`text-xs text-right font-mono ${colorCls(l.marginDelta)}`}>
-                        {l.marginDelta >= 0 ? '+' : ''}{l.marginDelta.toFixed(1)}pp
+                      <TableCell className={`text-xs text-right font-mono ${l.loadsPrev > 0 ? colorCls(l.marginDelta) : 'text-muted-foreground'}`}>
+                        {l.loadsPrev > 0 ? `${l.marginDelta >= 0 ? '+' : ''}${l.marginDelta.toFixed(1)}pp` : 'New'}
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        {l.worstCarrier ? (
+                          <div className="max-w-[180px]">
+                            <div className="font-medium truncate" title={l.worstCarrier.name}>{l.worstCarrier.name}</div>
+                            <div className="text-[10px] text-muted-foreground">
+                              {l.worstCarrier.loads} load{l.worstCarrier.loads === 1 ? '' : 's'} · <span className={l.worstCarrier.margin < FLOOR_TARGET ? 'text-destructive' : ''}>{pct(l.worstCarrier.margin)}</span>
+                              {l.worstCarrier.late > 0 && <> · <span className="text-destructive">{l.worstCarrier.late} late</span></>}
+                            </div>
+                          </div>
+                        ) : <span className="text-muted-foreground">—</span>}
                       </TableCell>
                       <TableCell className="text-xs">
                         <div className="flex flex-wrap gap-1">

@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { ArrowUpDown, ArrowUp, ArrowDown, Search, X } from 'lucide-react';
+import { FLOOR_TARGET, STRETCH_TARGET } from '@/lib/laneVolatility';
 
 const fmt = (n?: number) => n != null ? `$${Math.round(n).toLocaleString('en-US')}` : '—';
 const pct = (n?: number) => n != null ? `${n.toFixed(1)}%` : '—';
@@ -15,18 +16,35 @@ export interface RankRow {
   margin: number;
 }
 
-type SortKey = 'name' | 'loads' | 'revenue' | 'cost' | 'profit' | 'margin';
+type SortKey = 'name' | 'loads' | 'revenue' | 'cost' | 'profit' | 'margin' | 'share';
+
+/** One-click sorts shown above the table, e.g. "Top by profit" / "Worst margin" (RPT-12/13). */
+export interface QuickSort { label: string; key: SortKey; dir: 'asc' | 'desc' }
+export const DEFAULT_QUICK_SORTS: QuickSort[] = [
+  { label: 'Top by profit', key: 'profit', dir: 'desc' },
+  { label: 'Best margin', key: 'margin', dir: 'desc' },
+  { label: 'Worst margin', key: 'margin', dir: 'asc' },
+];
+
+/** Same targets as Lane Volatility: red under the floor, amber up to the stretch, green above. */
+export const marginClass = (m: number) =>
+  m < FLOOR_TARGET ? 'text-destructive' : m < STRETCH_TARGET ? 'text-warning' : 'text-success';
 
 interface Props {
   title: string;
   data: RankRow[];
   defaultSort: SortKey;
   defaultDir: 'asc' | 'desc';
+  /** @deprecated margins are always colored now */
   highlight?: 'margin';
+  /** Cap on rows; by default every row is listed and the table scrolls. */
   maxRows?: number;
+  /** Profit of ALL loads in the current filters; adds a "% of Profit" column (share of what we make). */
+  totalProfit?: number;
+  quickSorts?: QuickSort[];
   onRowClick?: (name: string) => void;
   selectedRow?: string | null;
-    /** Shown when the table has no rows before the table's own search/min-loads filters. */
+  /** Shown when the table has no rows before the table's own search/min-loads filters. */
   emptyMessage?: string;
   /** Explains what the table includes, e.g. how many loads are hidden by the minimum. */
   footnote?: string;
@@ -39,10 +57,16 @@ const columns: { key: SortKey; label: string; align: 'left' | 'right'; width?: s
   { key: 'cost', label: 'Cost', align: 'right', width: 'w-[100px]' },
   { key: 'profit', label: 'Profit', align: 'right', width: 'w-[100px]' },
   { key: 'margin', label: 'Margin %', align: 'right', width: 'w-[80px]' },
+  { key: 'share', label: '% of Profit', align: 'right', width: 'w-[90px]' },
 ];
 
-export default function InteractiveRankTable({ title, data, defaultSort, defaultDir, highlight, maxRows = 10, onRowClick, selectedRow, emptyMessage, footnote }: Props) {
-const [sortKey, setSortKey] = useState<SortKey>(defaultSort);
+export default function InteractiveRankTable({ title, data, defaultSort, defaultDir, maxRows = Infinity, onRowClick, selectedRow, emptyMessage, footnote, totalProfit, quickSorts }: Props) {
+  const showShare = totalProfit != null;
+  const cols = showShare ? columns : columns.filter(c => c.key !== 'share');
+  const withShare = useMemo(
+    () => data.map(r => ({ ...r, share: showShare && totalProfit! > 0 ? (r.profit / totalProfit!) * 100 : 0 })),
+    [data, showShare, totalProfit]);
+  const [sortKey, setSortKey] = useState<SortKey>(defaultSort);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>(defaultDir);
   const [nameFilter, setNameFilter] = useState('');
   const [minLoads, setMinLoads] = useState('');
@@ -58,7 +82,7 @@ const [sortKey, setSortKey] = useState<SortKey>(defaultSort);
   };
 
   const filtered = useMemo(() => {
-    let rows = data;
+    let rows = withShare;
     if (nameFilter) {
       const s = nameFilter.toLowerCase();
       rows = rows.filter(r => r.name.toLowerCase().includes(s));
@@ -67,7 +91,7 @@ const [sortKey, setSortKey] = useState<SortKey>(defaultSort);
       rows = rows.filter(r => r.loads >= Number(minLoads));
     }
     return rows;
-  }, [data, nameFilter, minLoads]);
+  }, [withShare, nameFilter, minLoads]);
 
   const sorted = useMemo(() => {
     const mult = sortDir === 'asc' ? 1 : -1;
@@ -88,7 +112,18 @@ const [sortKey, setSortKey] = useState<SortKey>(defaultSort);
     <Card className="flex flex-col">
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-sm font-medium">{title}</CardTitle>
+          <div className="flex items-center gap-2 flex-wrap">
+            <CardTitle className="text-sm font-medium">{title}</CardTitle>
+            {quickSorts?.map(q => {
+              const active = sortKey === q.key && sortDir === q.dir;
+              return (
+                <button key={q.label} type="button" onClick={() => { setSortKey(q.key); setSortDir(q.dir); }}
+                  className={`text-[11px] px-2 py-0.5 rounded-full border transition-colors ${active ? 'bg-primary text-primary-foreground border-primary' : 'text-muted-foreground hover:text-foreground hover:bg-muted'}`}>
+                  {q.label}
+                </button>
+              );
+            })}
+          </div>
           <div className="flex items-center gap-1">
             {hasActiveFilters && (
               <button onClick={() => { setNameFilter(''); setMinLoads(''); }} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-0.5">
@@ -108,11 +143,11 @@ const [sortKey, setSortKey] = useState<SortKey>(defaultSort);
         )}
       </CardHeader>
       <CardContent className="flex-1 p-0">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm min-w-[560px]">
-            <thead>
+        <div className="overflow-auto max-h-[440px]">
+          <table className="w-full text-sm min-w-[640px]">
+            <thead className="sticky top-0 z-10 bg-card">
               <tr className="text-muted-foreground text-xs border-b bg-muted/30">
-                {columns.map(col => (
+                {cols.map(col => (
                   <th
                     key={col.key}
                     className={`${col.align === 'left' ? 'text-left' : 'text-right'} px-4 py-2.5 whitespace-nowrap ${col.width || ''} cursor-pointer select-none hover:text-foreground transition-colors`}
@@ -139,11 +174,12 @@ const [sortKey, setSortKey] = useState<SortKey>(defaultSort);
                   <td className="px-4 py-2.5 text-right font-mono whitespace-nowrap">{fmt(r.revenue)}</td>
                   <td className="px-4 py-2.5 text-right font-mono whitespace-nowrap">{fmt(r.cost)}</td>
                   <td className="px-4 py-2.5 text-right font-mono whitespace-nowrap">{fmt(r.profit)}</td>
-                  <td className={`px-4 py-2.5 text-right font-mono whitespace-nowrap font-medium ${highlight === 'margin' ? (r.margin < 10 ? 'text-destructive' : r.margin < 15 ? 'text-warning' : 'text-success') : ''}`}>{pct(r.margin)}</td>
+                  <td className={`px-4 py-2.5 text-right font-mono whitespace-nowrap font-medium ${marginClass(r.margin)}`}>{pct(r.margin)}</td>
+                  {showShare && <td className={`px-4 py-2.5 text-right font-mono whitespace-nowrap ${r.share < 0 ? 'text-destructive' : 'text-muted-foreground'}`}>{pct(r.share)}</td>}
                 </tr>
               ))}
               {sorted.length === 0 && (
-                  <tr><td colSpan={6} className="px-4 py-6 text-center text-muted-foreground text-xs">{data.length === 0 && emptyMessage ? emptyMessage : 'No results match filters'}</td></tr>
+                <tr><td colSpan={cols.length} className="px-4 py-6 text-center text-muted-foreground text-xs">{data.length === 0 && emptyMessage ? emptyMessage : 'No results match filters'}</td></tr>
               )}
             </tbody>
           </table>

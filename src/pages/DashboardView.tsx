@@ -6,7 +6,7 @@ import InfoTip from '@/components/InfoTip';
 import { DataTrustBadge, DataWarnings } from '@/components/DataTrust';
 import type { TrustLevel } from '@/components/DataTrust';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, LabelList } from 'recharts';
-import InteractiveRankTable from '@/components/InteractiveRankTable';
+import InteractiveRankTable, { DEFAULT_QUICK_SORTS } from '@/components/InteractiveRankTable';
 import ComparisonRankTable, { ComparisonRow } from '@/components/ComparisonRankTable';
 import BusinessIntelligence from '@/components/BusinessIntelligence';
 import { finRev, finCost, DATA_QUALITY_CHECKS, getDataQualityLoads, computeDataQuality, type DataQualityIssue } from '@/lib/computeLoads';
@@ -154,6 +154,8 @@ export default function DashboardView() {
     return { rows, note };
   };
 
+    // % of Profit is each row's share of the profit of ALL loads in the current filters.
+  const allProfit = aggregate(loads).profit;
   const qualifiedCust = rankBy(customerOf);
   const qualifiedBrokers = rankBy(ownerOf);
   const qualifiedLanes = rankBy(l => l.lane);
@@ -346,18 +348,20 @@ export default function DashboardView() {
           data={compLanes} onRowClick={handleRowClick('lane')} selectedRow={dashFilter?.type === 'lane' ? dashFilter.value : null} />
       </div>
 
-      {/* Current-period rank tables (always shown) */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <InteractiveRankTable title="Top Lanes by Profit" data={qualifiedLanes.rows} footnote={qualifiedLanes.note} emptyMessage={rankEmpty('lanes')} defaultSort="profit" defaultDir="desc" onRowClick={handleRowClick('lane')} selectedRow={dashFilter?.type === 'lane' ? dashFilter.value : null} />
-        <InteractiveRankTable title="Bottom Lanes by Margin %" data={qualifiedLanes.rows} footnote={qualifiedLanes.note} emptyMessage={rankEmpty('lanes')} defaultSort="margin" defaultDir="asc" highlight="margin" onRowClick={handleRowClick('lane')} selectedRow={dashFilter?.type === 'lane' ? dashFilter.value : null} />
-      </div>
+      {/* One table per entity (RPT-12/13): Top-by-profit and Bottom-by-margin were the same rows
+          sorted two ways, so each is now one scrolling table with quick sorts and a % of profit column. */}
+      <InteractiveRankTable title="Lanes" data={qualifiedLanes.rows} footnote={qualifiedLanes.note} emptyMessage={rankEmpty('lanes')}
+        defaultSort="profit" defaultDir="desc" quickSorts={DEFAULT_QUICK_SORTS} totalProfit={allProfit}
+        onRowClick={handleRowClick('lane')} selectedRow={dashFilter?.type === 'lane' ? dashFilter.value : null} />
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <InteractiveRankTable title="Top Brokers by Profit" data={qualifiedBrokers.rows} footnote={qualifiedBrokers.note} emptyMessage={rankEmpty('brokers')} defaultSort="profit" defaultDir="desc" onRowClick={handleRowClick('broker')} selectedRow={dashFilter?.type === 'broker' ? dashFilter.value : null} />
-        <InteractiveRankTable title="Bottom Brokers by Margin %" data={qualifiedBrokers.rows} footnote={qualifiedBrokers.note} emptyMessage={rankEmpty('brokers')} defaultSort="margin" defaultDir="asc" highlight="margin" onRowClick={handleRowClick('broker')} selectedRow={dashFilter?.type === 'broker' ? dashFilter.value : null} />
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+        <InteractiveRankTable title="Brokers" data={qualifiedBrokers.rows} footnote={qualifiedBrokers.note} emptyMessage={rankEmpty('brokers')}
+          defaultSort="profit" defaultDir="desc" quickSorts={DEFAULT_QUICK_SORTS} totalProfit={allProfit}
+          onRowClick={handleRowClick('broker')} selectedRow={dashFilter?.type === 'broker' ? dashFilter.value : null} />
+        <InteractiveRankTable title="Customers" data={qualifiedCust.rows} footnote={qualifiedCust.note} emptyMessage={rankEmpty('customers')}
+          defaultSort="profit" defaultDir="desc" quickSorts={DEFAULT_QUICK_SORTS} totalProfit={allProfit}
+          onRowClick={handleRowClick('customer')} selectedRow={dashFilter?.type === 'customer' ? dashFilter.value : null} />
       </div>
-
-      <InteractiveRankTable title="Top Customers by Profit" data={qualifiedCust.rows} footnote={qualifiedCust.note} emptyMessage={rankEmpty('customers')} defaultSort="profit" defaultDir="desc" onRowClick={handleRowClick('customer')} selectedRow={dashFilter?.type === 'customer' ? dashFilter.value : null} />
 
       <LoadListDrawer
         open={dqIssue != null}

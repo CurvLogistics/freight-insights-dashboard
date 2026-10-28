@@ -13,6 +13,7 @@ import { selectLoads, shipDate, matchesFocus, minRankLoads, ownerOf, aggregate, 
 import { laneOf } from '@/lib/computeLoads';
 import { laneCompareRanges } from '@/lib/laneComparison';
 import { normalizeCityNames } from '@/lib/cityNames';
+import { worstCarrierOn } from '@/components/BusinessIntelligence';
 
 const rescheduled = (extra: Partial<Load>): Load => ({
   loadId: 'T-1', serviceSource: 'turvo', shipmentStatus: 'Delivered',
@@ -316,5 +317,20 @@ describe('RPT-09: Lane Comparison uses Mon–Sun weeks', () => {
   });
   it('on a Sunday, last week is the week that ended a week ago', () => {
     expect(laneCompareRanges('lastWeek', '2026-11-01').a).toEqual({ start: '2026-10-19', end: '2026-10-25' });
+  });
+});
+
+describe('Carrier Action Needed: worst carrier per lane', () => {
+  it('picks the carrier with the lowest margin, ignoring loads without cost', () => {
+    const ls = [
+      mk('A1', { carrierName: 'GOOD CO', revenue: 1000, carrierCost: 800 }),
+      mk('B1', { carrierName: 'BAD CO', revenue: 1000, carrierCost: 950 }),
+      mk('B2', { carrierName: 'BAD CO', revenue: 1000, carrierCost: 970 }),
+      mk('C1', { carrierName: 'NO COST', revenue: 1000, carrierCost: undefined }),
+    ].map(computeLoad);
+    const w = worstCarrierOn(ls)!;
+    expect(w.name).toBe('BAD CO');
+    expect(w.loads).toBe(2);
+    expect(w.margin).toBeCloseTo(4);
   });
 });
