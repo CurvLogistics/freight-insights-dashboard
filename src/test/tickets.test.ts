@@ -7,7 +7,7 @@ import { buildLaneVolatility } from '@/lib/laneVolatility';
 import { brokerDrilldown } from '@/lib/brokerDrilldown';
 import { summarizeCarriers, mostRecentCarrier } from '@/lib/laneCarriers';
 import { parseDelayReason, summarizeOtd } from '@/lib/delayReasons';
-import { matchesFilters, type Filters } from '@/lib/filters';
+import { matchesFilters, selectExceptionLoads, type Filters } from '@/lib/filters';
 import { toBusinessDate } from '@/lib/dates';
 import { selectLoads, shipDate, matchesFocus, minRankLoads, ownerOf, aggregate, groupBy, businessToday, businessTodayDate, addDays } from '@/lib/filters';
 import { laneOf } from '@/lib/computeLoads';
@@ -332,5 +332,19 @@ describe('Carrier Action Needed: worst carrier per lane', () => {
     expect(w.name).toBe('BAD CO');
     expect(w.loads).toBe(2);
     expect(w.margin).toBeCloseTo(4);
+  });
+});
+
+describe('QA: CL-27084 — uncovered loads stay in Exception Center in either view', () => {
+  const uncovered = mk('CL-27084', { shipmentStatus: 'Tendered', carrierName: '', carrierCost: 0, revenue: 3200 });
+  const loads = [uncovered, mk('B2', { shipmentStatus: 'Ready for Billing', carrierName: 'PRIME INC' }), mk('C1', { shipmentStatus: 'Canceled' })];
+  it('the Locked view drops it, Exception Center does not', () => {
+    expect(selectLoads(loads, baseFilters, baseFilters.dateRange, 'locked').map(l => l.loadId)).not.toContain('CL-27084');
+    expect(selectExceptionLoads(loads, baseFilters).map(l => l.loadId)).toEqual(['CL-27084', 'B2']);
+  });
+  it('is flagged as missing carrier and does not count as 100% margin', () => {
+    const [l] = selectExceptionLoads([uncovered], baseFilters);
+    expect(l.carrierName).toBeFalsy();
+    expect(l.marginPercent).toBeUndefined();
   });
 });

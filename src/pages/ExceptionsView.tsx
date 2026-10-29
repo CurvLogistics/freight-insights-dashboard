@@ -1,13 +1,15 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useData } from '@/context/DataContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { formatUSDate } from '@/lib/dates';
-import { businessTodayDate } from '@/lib/filters';
+import { businessTodayDate, selectExceptionLoads } from '@/lib/filters';
 
 export default function ExceptionsView() {
-  const { loads } = useData();
+  const { rawLoads, filters, viewMode } = useData();
+  // Exceptions ignore the Booked/Locked toggle (see selectExceptionLoads).
+  const loads = useMemo(() => selectExceptionLoads(rawLoads, filters), [rawLoads, filters]);
   const [unbilledDays, setUnbilledDays] = useState(7);
 
   const now = businessTodayDate();
@@ -25,7 +27,10 @@ export default function ExceptionsView() {
     <div className="space-y-6 animate-fade-in">
       <div>
         <h2 className="text-2xl font-bold">Exception Center</h2>
-        <p className="text-muted-foreground text-sm mt-1">Loads needing attention</p>
+        <p className="text-muted-foreground text-sm mt-1">
+          Loads needing attention
+          {viewMode === 'locked' && ' · checks every booked load, not only Locked ones'}
+        </p>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

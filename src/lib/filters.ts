@@ -108,6 +108,16 @@ export function selectLoads(raw: Load[], f: Filters, range: DateRange, viewMode:
     .filter(l => viewMode === 'booked' || l.simpleStatus === 'Locked');
 }
 
+/**
+ * Loads checked by Exception Center. Same date range and team/owner/equipment/search filters
+ * as the rest of the page, but always the Booked population: the Booked/Locked toggle is a
+ * financial-reporting choice, and Locked only keeps loads whose financials are final — which
+ * by definition drops uncovered loads (no carrier yet), the ones the alerts exist to catch.
+ */
+export function selectExceptionLoads(raw: Load[], f: Filters): ComputedLoad[] {
+  return selectLoads(raw, f, f.dateRange, 'booked');
+}
+
 /** One formula everywhere: revenue = all booked revenue; profit/margin/averages only from loads with revenue AND cost. */
 export interface Agg {
   loads: number; finLoads: number; revenue: number; finRevenue: number;
