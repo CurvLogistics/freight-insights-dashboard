@@ -357,3 +357,10 @@ describe('Katzman report: on-time basis toggle', () => {
     expect(deliveryStatus(l, 'original')).toBe('Late');
   });
 });
+
+describe('Katzman report: business-time snapshot label', () => {
+  it('shows a Monday 7:45 AM ET snapshot in New York time', async () => {
+    const { formatBusinessDateTime } = await import('@/lib/dates');
+    expect(formatBusinessDateTime('2026-11-09T12:45:00Z')).toMatch(/11\/09\/2026, 7:45 AM EST/);
+  });
+});

@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useMemo, useCallback, useEf
 import { Load, ComputedLoad, DataQuality, ViewType } from '@/types/loads';
 import { computeDataQuality, parseCSV, isActiveLoad } from '@/lib/computeLoads';
 import { useAuth } from '@clerk/react';
-import { fetchLoadsFromApi } from '@/lib/loadsRepository';
+import { fetchLoadsFromApi, fetchSnapshots, type SnapshotInfo } from '@/lib/loadsRepository';
 import { normalizeCityNames } from '@/lib/cityNames';
 import { getComparisonWindow, type ComparisonMode, type ComparisonWindow } from '@/lib/comparison';
 import {
@@ -40,6 +40,11 @@ interface DataContextType {
   dataLoading: boolean;
   dataError: string | null;
   lastSyncedAt: string | null;
+  /** null = live (latest sync). Otherwise the snapshot time being shown. */
+  asOf: string | null;
+  setAsOf: (iso: string | null) => void;
+  snapshotAt: string | null;
+  snapshots: SnapshotInfo[];
   refreshLoads: () => Promise<void>;
   resetFilters: () => void;
   filtersActive: boolean;
@@ -69,6 +74,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [dataLoading, setDataLoading] = useState(true);
   const [dataError, setDataError] = useState<string | null>(null);
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
+  const [asOf, setAsOf] = useState<string | null>(null);
+  const [snapshotAt, setSnapshotAt] = useState<string | null>(null);
+  const [snapshots, setSnapshots] = useState<SnapshotInfo[]>([]);
   const [currentView, setCurrentView] = useState<ViewType>('dashboard');
   const [comparisonMode, setComparisonMode] = useState<ComparisonMode>('prior');
   const [timeframePreset, setTimeframePresetState] = useState<TimeframePreset>(DEFAULT_PRESET);
@@ -80,22 +88,25 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setDataLoading(true);
     setDataError(null);
     try {
-      const { loads: apiLoads, lastSyncedAt: synced } = await fetchLoadsFromApi(getToken);
+      const { loads: apiLoads, lastSyncedAt: synced, snapshotAt: snap } = await fetchLoadsFromApi(getToken, asOf);
       // One spelling per city ("The Bronx" / "Bronx"), so a lane is never split in two (RPT-19).
       setRawLoads(normalizeCityNames(dedupeLoads(apiLoads)));
       setDataSource(apiLoads.length > 0 ? 'turvo' : 'none');
       setLastSyncedAt(synced);
+      setSnapshotAt(snap);
       if (apiLoads.length === 0) setDataError('No Turvo loads synced yet. Run a sync from Settings.');
     } catch (err) {
       setRawLoads([]);
+      setSnapshotAt(null);
       setDataSource('none');
       setDataError(err instanceof Error ? err.message : 'Could not reach Turvo sync');
     } finally {
       setDataLoading(false);
     }
-  }, [getToken]);
+  }, [getToken, asOf]);
 
   useEffect(() => { void refreshLoads(); }, [refreshLoads]);
+  useEffect(() => { void fetchSnapshots(getToken).then(setSnapshots); }, [getToken, lastSyncedAt]);
 
   const setTimeframePreset = useCallback((preset: TimeframePreset) => {
     setTimeframePresetState(preset);
@@ -156,6 +167,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       currentView, setCurrentView, importCSV, importBusy, teams, owners, equipmentTypes,
       comparisonMode, setComparisonMode, timeframePreset, setTimeframePreset,
       viewMode, setViewMode, dataSource, dataLoading, dataError, lastSyncedAt,
+      asOf, setAsOf, snapshotAt, snapshots,
       refreshLoads, resetFilters, filtersActive,
     }}>
       {children}

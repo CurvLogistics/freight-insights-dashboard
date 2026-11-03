@@ -49,6 +49,17 @@ export function formatUSDateTime(value?: string | null): string {
   });
 }
 
+/** "11/09/2026, 7:45 AM EST": a moment in the business time zone, e.g. a snapshot time. */
+export function formatBusinessDateTime(value?: string | null): string {
+  if (!value) return '—';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleString('en-US', {
+    timeZone: BUSINESS_TZ, month: '2-digit', day: '2-digit', year: 'numeric',
+    hour: 'numeric', minute: '2-digit', timeZoneName: 'short',
+  });
+}
+
 /** "10/08/2026" (also 10/8/2026, 10-08-2026) -> "2026-10-08". Returns null if invalid. */
 export function parseUSDate(input: string): string | null {
   const m = /^\s*(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})\s*$/.exec(input);

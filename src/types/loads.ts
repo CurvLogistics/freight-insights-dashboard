@@ -58,6 +58,17 @@ export interface Load {
   arOpenBalance?: number; arPaid?: boolean; arLastPaymentDate?: string;
   apInvoiceNumber?: string; apInvoiceDate?: string; apDueDate?: string; apInvoiceAmount?: number;
   apOpenBalance?: number; apPaid?: boolean; apLastPaymentDate?: string;
+
+  // --- Carrier service fields from the Turvo sync (turvo-mcp-server/report_fields.py) ---
+  /** Carriers put on this load and later removed (tender fall-off; Turvo has no tender accept/reject events). */
+  fallOffCarriers?: string[];
+  carrierOrderCount?: number;
+  /** Tracking compliant once dispatched: Turvo is tracking and the last update was not manual. Unset = not scored. */
+  trackingCompliant?: boolean;
+  trackingMethod?: string;
+  trackingSource?: string;
+  trackingActive?: boolean;
+  driverAppStatus?: string;
 }
 
 

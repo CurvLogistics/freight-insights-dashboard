@@ -102,7 +102,7 @@ function getRegion(state?: string): string {
   return STATE_REGIONS[state.toUpperCase().trim()] || 'Other';
 }
 
-type SortKey = 'name' | 'loads' | 'revenue' | 'cost' | 'avgCost' | 'margin' | 'otp' | 'otd' | 'rawOtd' | 'grade' | 'late' | 'activeLanes';
+type SortKey = 'name' | 'loads' | 'revenue' | 'cost' | 'avgCost' | 'margin' | 'otp' | 'otd' | 'rawOtd' | 'grade' | 'late' | 'activeLanes' | 'tracking' | 'fallOff';
 type SortDir = 'asc' | 'desc';
 type LaneSortKey = 'lane' | 'loads' | 'avgCost' | 'otd';
 
@@ -120,6 +120,13 @@ interface CarrierRow {
   otd: OtdSummary;
   latePickup: number;
   lateDelivery: number;
+  /** % of dispatched loads tracked by app/ELD (not manual updates). null = none scored. */
+  trackingPct: number | null;
+  trackingScored: number;
+  /** Loads this carrier was put on and then came off (tender fall-off). */
+  fallOffs: number;
+  /** fallOffs / (loads hauled + fallOffs). */
+  fallOffPct: number | null;
   activeLanes: number;
   grade: 'A' | 'B' | 'C';
   flags: string[];
@@ -206,6 +213,7 @@ export default function CarrierScorecardView() {
       unpaidAmount: number; payDays: number[];
            shipDates: string[];
       all: ComputedLoad[];
+      trackScored: number; tracked: number;
     }>();
 
     regionLoads.forEach(l => {
@@ -220,6 +228,7 @@ export default function CarrierScorecardView() {
           activeLanes: new Set(), laneLoads: new Map(),
           lastShipDate: '', regions: new Set(),
           unpaidAmount: 0, payDays: [], shipDates: [], all: [],
+          trackScored: 0, tracked: 0,
         };
         carrierMap.set(key, e);
       }
@@ -228,6 +237,7 @@ export default function CarrierScorecardView() {
       if (l.revenue != null) e.revenue += l.revenue;
       if (l.carrierCost != null) e.cost += l.carrierCost;
 
+      if (l.trackingCompliant != null) { e.trackScored++; if (l.trackingCompliant) e.tracked++; }
       if (l.onTimePickup === 'On Time') { e.onTimePickup++; e.knownPickup++; }
       else if (l.onTimePickup === 'Late') { e.latePickup++; e.knownPickup++; }
       const del = deliveryStatus(l, basis);
@@ -269,8 +279,16 @@ export default function CarrierScorecardView() {
       }
     });
 
+    // Fall-offs belong to the carrier that dropped the load, not the one that hauled it.
+    const fallOffMap = new Map<string, number>();
+    regionLoads.forEach(l => (l.fallOffCarriers ?? []).forEach(n => {
+      const k = n.trim().toUpperCase();
+      fallOffMap.set(k, (fallOffMap.get(k) ?? 0) + 1);
+    }));
+
     const rows: CarrierRow[] = [];
-    carrierMap.forEach(e => {
+    carrierMap.forEach((e, key) => {
+      const fallOffs = fallOffMap.get(key) ?? 0;
       const profit = e.revenue - e.cost;
       const margin = e.revenue > 0 ? (profit / e.revenue) * 100 : 0;
       const avgCost = e.loads > 0 ? e.cost / e.loads : 0;
@@ -308,6 +326,9 @@ export default function CarrierScorecardView() {
         name: e.name, loads: e.loads, revenue: e.revenue, cost: e.cost,
         profit, margin, avgCost, otpPct, otdPct, otd: summarizeOtd(e.all),
         latePickup: e.latePickup, lateDelivery: e.lateDelivery,
+        trackingPct: e.trackScored > 0 ? (e.tracked / e.trackScored) * 100 : null,
+        trackingScored: e.trackScored,
+        fallOffs, fallOffPct: e.loads + fallOffs > 0 ? (fallOffs / (e.loads + fallOffs)) * 100 : null,
         activeLanes: e.activeLanes.size, grade, flags, lanes,
         lastShipDate: e.lastShipDate, costDelta, costDeltaPct,
         regions: [...e.regions],
@@ -343,6 +364,8 @@ export default function CarrierScorecardView() {
         case 'otp': av = a.otpPct ?? -1; bv = b.otpPct ?? -1; break;
         case 'otd': av = a.otdPct ?? -1; bv = b.otdPct ?? -1; break;
         case 'rawOtd': av = a.otd.rawPct ?? -1; bv = b.otd.rawPct ?? -1; break;
+        case 'tracking': av = a.trackingPct ?? -1; bv = b.trackingPct ?? -1; break;
+        case 'fallOff': av = a.fallOffs; bv = b.fallOffs; break;
         case 'grade': av = a.grade; bv = b.grade; break;
         case 'late': av = a.lateDelivery; bv = b.lateDelivery; break;
         case 'activeLanes': av = a.activeLanes; bv = b.activeLanes; break;
@@ -486,16 +509,18 @@ export default function CarrierScorecardView() {
                   {!shareView && <SortTh k="avgCost" label="Avg Cost" align="right" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} w="95px" />}
                   {!shareView && <SortTh k="margin" label="Margin" align="right" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} w="75px" />}
                   <SortTh k="otp" label="OTP %" align="right" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} w="70px" />
-                  <SortTh k="otd" label="True OTD %" align="right" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} w="85px" />
+                  <SortTh k="otd" label={basis === 'original' ? 'OTD % (orig)' : 'True OTD %'} align="right" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} w="85px" />
                   <SortTh k="rawOtd" label="Raw OTD %" align="right" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} w="85px" />
                   <SortTh k="late" label="Late" align="right" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} w="55px" />
+                  <SortTh k="tracking" label="Tracking %" align="right" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} w="85px" />
+                  <SortTh k="fallOff" label="Fall-offs" align="right" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} w="75px" />
                   {!shareView && <th className="px-4 py-3 text-right w-[95px]">Cost vs Mkt</th>}
                   {!shareView && <th className="px-4 py-3 text-left w-[160px]">Flags</th>}
                 </tr>
               </thead>
               <tbody>
                 {sorted.map((c, i) => {
-                  const colSpan = shareView ? 8 : 13;
+                  const colSpan = shareView ? 10 : 15;
                   return (
                     <>
                       <tr
@@ -529,6 +554,18 @@ export default function CarrierScorecardView() {
                           {c.otd.rawPct != null ? `${c.otd.rawPct.toFixed(0)}%` : '—'}
                         </td>
                         <td className="px-4 py-3 text-right font-mono text-destructive">{c.lateDelivery}</td>
+                        <td
+                          className={`px-4 py-3 text-right font-mono ${c.trackingPct == null ? 'text-muted-foreground' : c.trackingPct >= 90 ? 'text-success' : c.trackingPct >= 75 ? 'text-warning' : 'text-destructive'}`}
+                          title={`${c.trackingScored} dispatched loads scored. Compliant = tracked by app/ELD, last update not manual.`}
+                        >
+                          {c.trackingPct != null ? `${c.trackingPct.toFixed(0)}%` : '—'}
+                        </td>
+                        <td
+                          className={`px-4 py-3 text-right font-mono ${c.fallOffs > 0 ? 'text-destructive' : 'text-muted-foreground'}`}
+                          title="Loads this carrier was put on and then removed from. Turvo has no tender accept/reject events, so this stands in for tender rejections."
+                        >
+                          {c.fallOffs > 0 ? `${c.fallOffs} (${c.fallOffPct!.toFixed(0)}%)` : '—'}
+                        </td>
                         {!shareView && (
                           <td className={`px-4 py-3 text-right font-mono text-xs ${c.costDelta == null ? 'text-muted-foreground' : c.costDelta > 0 ? 'text-destructive' : 'text-success'}`}>
                             {c.costDelta != null ? <span>{fmtDelta(c.costDelta)} <span className="text-muted-foreground">({fmtDeltaPct(c.costDeltaPct)})</span></span> : '—'}

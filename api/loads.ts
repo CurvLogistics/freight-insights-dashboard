@@ -10,10 +10,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
   try {
     const user = await requireUser(req);
-    const r = await fetch(`${base.replace(/\/$/, '')}/loads`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const root = base.replace(/\/$/, '');
+    const auth = { Authorization: `Bearer ${token}` };
     res.setHeader('Cache-Control', 'no-store');
+
+    // List of saved snapshots for the "As of" picker (no load data, so no permission filter needed).
+    if (req.query.list === 'snapshots') {
+      const s = await fetch(`${root}/loads/snapshots`, { headers: auth });
+      res.setHeader('Content-Type', 'application/json');
+      return res.status(s.status).send(await s.text());
+    }
+
+    // ?asOf=<ISO time> = the latest snapshot saved at or before that time; otherwise live data.
+    const asOf = typeof req.query.asOf === 'string' && req.query.asOf ? req.query.asOf : null;
+    const r = await fetch(`${root}/loads${asOf ? `?asOf=${encodeURIComponent(asOf)}` : ''}`, { headers: auth });
     if (!r.ok) {
       res.setHeader('Content-Type', 'application/json');
       return res.status(r.status).send(await r.text());

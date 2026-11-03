@@ -10,6 +10,7 @@ import { isActiveLoad } from '@/lib/computeLoads';
 import DateInputUS from '@/components/DateInputUS';
 import TeamFilter from '@/components/TeamFilter';
 import { VIEW_MODE_HELP } from '@/lib/filters';
+import { formatBusinessDateTime } from '@/lib/dates';
 
 const navItems: { id: ViewType; label: string; icon: React.ElementType }[] = [
   { id: 'dashboard', label: 'Executive Overview', icon: LayoutDashboard },
@@ -34,7 +35,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     teams, owners, equipmentTypes, comparisonMode, setComparisonMode,
     timeframePreset, setTimeframePreset, viewMode, setViewMode,
     dataSource, dataLoading, dataError, refreshLoads, rawLoads, importBusy,
-    resetFilters, filtersActive,
+    resetFilters, filtersActive, asOf, setAsOf, snapshotAt, snapshots,
   } = useData();
 
   // Same base as "Total Loads in Dataset": canceled/draft loads are synced but excluded from every metric.
@@ -191,6 +192,23 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               </SelectContent>
             </Select>
 
+            {/* As of: live data, or a saved snapshot (e.g. Monday 8 AM for a weekly report) */}
+            <Select value={asOf ?? 'live'} onValueChange={v => setAsOf(v === 'live' ? null : v)}>
+              <SelectTrigger
+                className={`h-9 w-52 text-xs ${asOf ? 'border-warning text-warning' : ''}`}
+                title="Show the data exactly as it was at a past sync. Snapshots exist only from the day they were switched on."
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="live">As of: live (latest sync)</SelectItem>
+                {snapshots.map(s => (
+                  <SelectItem key={s.takenAt} value={s.takenAt}>As of: {formatBusinessDateTime(s.takenAt)}</SelectItem>
+                ))}
+                {snapshots.length === 0 && <SelectItem value="none" disabled>No snapshots saved yet</SelectItem>}
+              </SelectContent>
+            </Select>
+
             {/* Account owner: default whole team */}
             <Select value={filters.owner} onValueChange={v => setFilters(f => ({ ...f, owner: v }))}>
               <SelectTrigger className="h-9 w-40 text-xs"><SelectValue placeholder="Account owner" /></SelectTrigger>
@@ -227,6 +245,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             </button>
           </div>
         </header>
+
+        {asOf && (
+          <div className="px-6 py-2 text-xs bg-warning/10 border-b border-warning/30 text-warning flex items-center gap-2">
+            Showing data as of {formatBusinessDateTime(snapshotAt ?? asOf)} (saved snapshot), not live.
+            <button type="button" className="underline" onClick={() => setAsOf(null)}>Back to live</button>
+          </div>
+        )}
 
         {/* Content */}
         <div className="flex-1 overflow-auto p-6">

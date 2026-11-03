@@ -9,9 +9,7 @@
     }
   ],
   "crons": [
-    {
-      "path": "/api/cron/sync",
-      "schedule": "0 9 * * *"
-    }
+    { "path": "/api/cron/sync", "schedule": "0 9 * * *" },
+    { "path": "/api/cron/sync", "schedule": "45 12 * * 1" }
   ]
 }

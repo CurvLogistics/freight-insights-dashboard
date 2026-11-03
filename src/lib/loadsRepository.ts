@@ -25,17 +25,33 @@ async function checkAdminResponse(res: Response): Promise<void> {
 export interface LoadsResponse {
   loads: Load[];
   lastSyncedAt: string | null;
+  /** Set when the data is a saved snapshot rather than the latest sync. */
+  snapshotAt: string | null;
 }
 
-/** Returns only the loads the signed-in user may see (the server filters by role / broker). */
-export async function fetchLoadsFromApi(getToken: GetSessionToken): Promise<LoadsResponse> {
-  const res = await fetch('/api/loads', { cache: 'no-store', headers: await authHeader(getToken) });
+export interface SnapshotInfo { takenAt: string; sizeBytes?: number }
+
+/**
+ * Returns only the loads the signed-in user may see (the server filters by role / broker).
+ * With `asOf` (ISO time), returns the latest snapshot saved at or before that moment.
+ */
+export async function fetchLoadsFromApi(getToken: GetSessionToken, asOf?: string | null): Promise<LoadsResponse> {
+  const url = asOf ? `/api/loads?asOf=${encodeURIComponent(asOf)}` : '/api/loads';
+  const res = await fetch(url, { cache: 'no-store', headers: await authHeader(getToken) });
   if (!res.ok) {
     const { error } = await res.json().catch(() => ({ error: '' }));
     throw new Error(error || `Loads API error ${res.status}`);
   }
   const data = await res.json();
-  return { loads: data.loads ?? [], lastSyncedAt: data.lastSyncedAt ?? null };
+  return { loads: data.loads ?? [], lastSyncedAt: data.lastSyncedAt ?? null, snapshotAt: data.snapshotAt ?? null };
+}
+
+/** Saved snapshots, newest first. Empty if the sync server has none yet. */
+export async function fetchSnapshots(getToken: GetSessionToken): Promise<SnapshotInfo[]> {
+  const res = await fetch('/api/loads?list=snapshots', { cache: 'no-store', headers: await authHeader(getToken) });
+  if (!res.ok) return [];
+  const data = await res.json().catch(() => ({}));
+  return Array.isArray(data.snapshots) ? data.snapshots : [];
 }
 
 export async function triggerSync(getToken: GetSessionToken, days = 45): Promise<void> {
