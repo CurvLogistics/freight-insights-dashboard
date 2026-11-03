@@ -65,7 +65,7 @@ export default function LoadListDrawer({
     a.href = URL.createObjectURL(blob);
     a.download = `${title.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.csv`;
     a.click();
-    URL.revokeObjectURL(a.href);
+    setTimeout(() => URL.revokeObjectURL(a.href), 0);
   };
 
   return (
@@ -83,9 +83,14 @@ export default function LoadListDrawer({
             <div>
               <div className="flex items-center justify-between mb-1.5">
                 <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Accounts</p>
-                <button onClick={exportCsv} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
-                  <Download className="w-3 h-3" /> Export CSV
-                </button>
+             <button
+              onClick={exportCsv} 
+              disabled={!rows.length}
+              className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md bg-primary text-primary-foreground text-xs font-semibold shadow-sm hover:bg-primary/90 disabled:opacity-50"
+            >
+              <Download className="h-4 w-4" />
+              Export CSV ({rows.length})
+            </button>
               </div>
               <div className="flex flex-wrap gap-1.5">
                 <Chip active={!account} onClick={() => setAccount(null)}>All ({loads.length})</Chip>
