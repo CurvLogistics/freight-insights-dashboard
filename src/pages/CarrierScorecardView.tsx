@@ -9,7 +9,7 @@ import { Search, ArrowUpDown, ArrowUp, ArrowDown, Filter, FileText, Eye, EyeOff,
 import { ComputedLoad } from '@/types/loads';
 import { DataTrustBadge, DataWarnings } from '@/components/DataTrust';
 import { formatUSDate } from '@/lib/dates';
-import { summarizeOtd, type OtdSummary } from '@/lib/delayReasons';
+import { summarizeOtd, type OtdSummary, deliveryStatus, OTD_BASIS_LABEL, type OtdBasis } from '@/lib/delayReasons';
 import { businessTodayDate } from '@/lib/filters';
 
 /* ── Weekly trend helpers ── */
@@ -171,6 +171,7 @@ export default function CarrierScorecardView() {
   const [flagFilter, setFlagFilter] = useState<string>('all');
   const [regionFilter, setRegionFilter] = useState<string>('all');
   const [shareView, setShareView] = useState(false);
+  const [basis, setBasis] = useState<OtdBasis>('fair');
 
   const availableRegions = useMemo(() => {
     const regions = new Set<string>();
@@ -229,8 +230,9 @@ export default function CarrierScorecardView() {
 
       if (l.onTimePickup === 'On Time') { e.onTimePickup++; e.knownPickup++; }
       else if (l.onTimePickup === 'Late') { e.latePickup++; e.knownPickup++; }
-      if (l.onTimeDelivery === 'On Time') { e.onTimeDelivery++; e.knownDelivery++; }
-      else if (l.onTimeDelivery === 'Late') { e.lateDelivery++; e.knownDelivery++; }
+      const del = deliveryStatus(l, basis);
+      if (del === 'On Time') { e.onTimeDelivery++; e.knownDelivery++; }
+      else if (del === 'Late') { e.lateDelivery++; e.knownDelivery++; }
 
       if (l.lane && l.lane !== UNKNOWN_LANE) {
         e.activeLanes.add(l.lane);
@@ -238,8 +240,8 @@ export default function CarrierScorecardView() {
         le.loads++;
         if (l.carrierCost != null) le.cost += l.carrierCost;
         if (l.revenue != null) le.revenue += l.revenue;
-        if (l.onTimeDelivery === 'On Time') { le.otd++; le.knownOtd++; }
-        else if (l.onTimeDelivery === 'Late') { le.knownOtd++; }
+        if (del === 'On Time') { le.otd++; le.knownOtd++; }
+        else if (del === 'Late') { le.knownOtd++; }
         const ld = l.pickupDate || l.deliveryDate || '';
         if (ld > le.lastShipDate) le.lastShipDate = ld;
         e.laneLoads.set(l.lane, le);
@@ -314,8 +316,8 @@ export default function CarrierScorecardView() {
       });
     });
     return rows;
-  }, [regionLoads, regionLaneAvgCosts]);
-
+  }, [regionLoads, regionLaneAvgCosts, basis]);
+  
   const filtered = useMemo(() => {
     let result = carriers.filter(c => c.loads >= minLoads);
     if (search) {
@@ -406,6 +408,17 @@ export default function CarrierScorecardView() {
         >
           <EyeOff className="w-3.5 h-3.5" /> Carrier View
         </button>
+        <span className="ml-4 text-xs text-muted-foreground">OTD scored by:</span>
+        {(Object.keys(OTD_BASIS_LABEL) as OtdBasis[]).map(k => (
+          <button
+            key={k}
+            onClick={() => setBasis(k)}
+            title={k === 'fair' ? 'Customer/shipper-caused reschedules are left out of OTD' : 'Arrival vs. the original delivery appointment, nothing excused'}
+            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${basis === k ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:text-foreground'}`}
+          >
+            {k === 'fair' ? 'Fair' : 'Original appt'}
+          </button>
+        ))}
       </div>
 
       {shareView && (

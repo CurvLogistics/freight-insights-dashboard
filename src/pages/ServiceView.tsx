@@ -7,22 +7,23 @@ import { DataTrustBadge, DataWarnings } from '@/components/DataTrust';
 import type { ComputedLoad } from '@/types/loads';
 import LoadListDrawer from '@/components/LoadListDrawer';
 import { isScored } from '@/lib/computeLoads';
-import { summarizeOtd } from '@/lib/delayReasons';
+import { summarizeOtd, deliveryStatus, OTD_BASIS_LABEL, DELAY_FAULT_LABEL, type OtdBasis } from '@/lib/delayReasons';
+import { formatUSDateTime } from '@/lib/dates';
 
 type StatusFilter = 'all' | 'on-time' | 'late' | 'hidden' | 'customer' | 'shipper' | 'excluded' | 'on-time-pickup' | 'late-pickup' | 'unknown';
 type GroupBy = 'broker' | 'team' | 'customer' | 'carrier';
 
-const STATUS_FILTERS: { key: StatusFilter; label: string; match: (l: ComputedLoad) => boolean }[] = [
+const STATUS_FILTERS: { key: StatusFilter; label: string; match: (l: ComputedLoad, del: ComputedLoad['onTimeDelivery']) => boolean }[] = [
   { key: 'all', label: 'All shipments', match: () => true },
-  { key: 'on-time', label: 'On-time delivery', match: l => l.onTimeDelivery === 'On Time' },
-  { key: 'late', label: 'Late delivery', match: l => l.onTimeDelivery === 'Late' },
+  { key: 'on-time', label: 'On-time delivery', match: (_l, d) => d === 'On Time' },
+  { key: 'late', label: 'Late delivery', match: (_l, d) => d === 'Late' },
   { key: 'hidden', label: 'Hidden late', match: l => l.hiddenLate },
   { key: 'on-time-pickup', label: 'On-time pickup', match: l => l.onTimePickup === 'On Time' },
   { key: 'late-pickup', label: 'Late pickup', match: l => l.onTimePickup === 'Late' },
   { key: 'customer', label: 'Customer fault (excused)', match: l => l.excludedFromOnTime && l.delayFault === 'customer' },
   { key: 'shipper', label: 'Shipper fault (excused)', match: l => l.excludedFromOnTime && l.delayFault === 'shipper' },
-  { key: 'excluded', label: 'Excluded (rescheduled)', match: l => l.excludedFromOnTime },
-  { key: 'unknown', label: "Can't score", match: l => l.onTimeDelivery === 'Unknown' },
+  { key: 'excluded', label: 'Rescheduled by customer/shipper', match: l => l.excludedFromOnTime },
+  { key: 'unknown', label: "Can't score", match: (_l, d) => d === 'Unknown' },
 ];
 
 const GROUP_LABEL: Record<GroupBy, string> = { broker: 'Broker', team: 'Team', customer: 'Customer', carrier: 'Carrier' };
@@ -39,41 +40,43 @@ export default function ServiceView() {
   const [group, setGroup] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
   const [drawer, setDrawer] = useState<StatusFilter | null>(null);
+  const [basis, setBasis] = useState<OtdBasis>('fair');
+  const del = (l: ComputedLoad) => deliveryStatus(l, basis);
 
   // Clicking a KPI card opens the shipments behind it (with the accounts involved),
   // and also sets the table below to the same filter.
   const openList = (key: StatusFilter) => { setStatus(key); setDrawer(key); };
   const drawerDef = STATUS_FILTERS.find(f => f.key === drawer);
   const drawerLoads = useMemo(
-    () => (drawerDef ? loads.filter(drawerDef.match).filter(l => !group || groupValue(l, groupBy) === group) : []),
-    [loads, drawerDef, group, groupBy],
+    () => (drawerDef ? loads.filter(l => drawerDef.match(l, del(l))).filter(l => !group || groupValue(l, groupBy) === group) : []),
+    [loads, drawerDef, group, groupBy, basis],
   );
-
 
   const synced = loads.filter(l => l.serviceSource === 'turvo').length;
   const usingNewRules = loads.length > 0 && synced / loads.length >= 0.9;
 
   const kpi = useMemo(() => {
     const knownPu = loads.filter(l => isScored(l.onTimePickup));
-    const knownDel = loads.filter(l => isScored(l.onTimeDelivery));
+    const knownDel = loads.filter(l => isScored(del(l)));
     const knownTurvo = loads.filter(l => l.onTimeDeliveryTurvo && l.onTimeDeliveryTurvo !== 'Unknown');
     const otd = summarizeOtd(loads);
     return {
-    rawPct: otd.rawPct,
+      rawPct: otd.rawPct,
+      fairPct: otd.truePct,
       total: loads.length,
       puPct: pct(knownPu.filter(l => l.onTimePickup === 'On Time').length, knownPu.length),
       puLate: knownPu.filter(l => l.onTimePickup === 'Late').length,
-      delPct: pct(knownDel.filter(l => l.onTimeDelivery === 'On Time').length, knownDel.length),
+      delPct: pct(knownDel.filter(l => del(l) === 'On Time').length, knownDel.length),
       delKnown: knownDel.length,
       turvoPct: pct(knownTurvo.filter(l => l.onTimeDeliveryTurvo === 'On Time').length, knownTurvo.length),
-      late: knownDel.filter(l => l.onTimeDelivery === 'Late').length,
+      late: knownDel.filter(l => del(l) === 'Late').length,
       hidden: loads.filter(l => l.hiddenLate).length,
       customer: loads.filter(l => l.excludedFromOnTime && l.delayFault === 'customer').length,
       shipper: loads.filter(l => l.excludedFromOnTime && l.delayFault === 'shipper').length,
       excluded: loads.filter(l => l.excludedFromOnTime).length,
-      unknown: loads.filter(l => l.onTimeDelivery === 'Unknown').length,
+      unknown: loads.filter(l => del(l) === 'Unknown').length,
     };
-  }, [loads]);
+  }, [loads, basis]);
 
   // Accountability: who owns the late shipments
   const groups = useMemo(() => {
@@ -82,7 +85,8 @@ export default function ServiceView() {
       const name = groupValue(l, groupBy);
       const g = m.get(name) ?? { name, loads: 0, known: 0, onTime: 0, late: 0, hidden: 0, excluded: 0, puKnown: 0, puOnTime: 0 };
       g.loads++;
-      if (isScored(l.onTimeDelivery)) { g.known++; if (l.onTimeDelivery === 'On Time') g.onTime++; else g.late++; }
+      const d = del(l);
+      if (isScored(d)) { g.known++; if (d === 'On Time') g.onTime++; else g.late++; }
       if (isScored(l.onTimePickup)) { g.puKnown++; if (l.onTimePickup === 'On Time') g.puOnTime++; }
       if (l.hiddenLate) g.hidden++;
       if (l.excludedFromOnTime) g.excluded++;
@@ -90,16 +94,17 @@ export default function ServiceView() {
       m.set(name, g);
     }
     return [...m.values()].sort((a, b) => b.late - a.late || b.loads - a.loads);
-  }, [loads, groupBy]);
+  }, [loads, groupBy, basis]);
 
   const statusDef = STATUS_FILTERS.find(f => f.key === status)!;
   const rows = useMemo(
     () => loads
-      .filter(statusDef.match)
+      .filter(l => statusDef.match(l, del(l)))
       .filter(l => !group || groupValue(l, groupBy) === group)
       .sort((a, b) => (b.minutesLate ?? 0) - (a.minutesLate ?? 0)),
-    [loads, statusDef, group, groupBy],
+    [loads, statusDef, group, groupBy, basis],
   );
+
   const visible = showAll ? rows : rows.slice(0, 50);
 
   return (
@@ -115,7 +120,12 @@ export default function ServiceView() {
             tooltip={usingNewRules ? `${kpi.unknown} shipments missing arrival times` : 'Re-sync from Turvo to use the new on-time rules'}
           />
         </div>
-            <p className="text-muted-foreground text-sm mt-1">True on-time excludes shipper/customer-caused delays; Raw = arrival vs. the original appointment with nothing excused.</p>
+        <p className="text-muted-foreground text-sm mt-1">True on-time excludes shipper/customer-caused delays; Original appointment = arrival vs. the first appointment with nothing excused.</p>
+        <div className="flex items-center gap-2 mt-2">
+          <span className="text-xs text-muted-foreground">Score delivery by:</span>
+          <Chips options={(Object.keys(OTD_BASIS_LABEL) as OtdBasis[]).map(k => ({ key: k, label: OTD_BASIS_LABEL[k] }))} value={basis} onChange={k => setBasis(k as OtdBasis)} />
+          <InfoTip text="Reschedule reasons are inferred by the Turvo sync (Turvo does not store why an appointment moved), unless a structured delay reason was entered in Turvo. The 'Reason source' column in the export shows which." />
+        </div>
         <DataWarnings warnings={[
           ...(!usingNewRules ? ['Most loads were not synced with the new rules yet — run Settings → Sync now (180 days) so on-time uses original vs. rescheduled dates.'] : []),
           ...(kpi.unknown > 0 ? [`${kpi.unknown} shipments have no delivery arrival time in Turvo — excluded from on-time %`] : []),
@@ -125,10 +135,10 @@ export default function ServiceView() {
       <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
         <MetricCard label="Total Shipments" value={kpi.total.toLocaleString('en-US')} sub="In current filters" tone="neutral" onClick={() => openList('all')} />
         <MetricCard label="On-Time Pickup" value={fmtPct(kpi.puPct)} sub={`${kpi.puLate} late pickups`} tone={kpi.puPct != null && kpi.puPct >= 90 ? 'good' : 'warn'} onClick={() => openList('on-time-pickup')} secondary={{ label: `${kpi.puLate} late`, onClick: () => openList('late-pickup') }} />
-        <MetricCard label="True On-Time Delivery" value={fmtPct(kpi.delPct)} sub={`Raw ${fmtPct(kpi.rawPct)}${kpi.turvoPct != null ? ` · Turvo ${fmtPct(kpi.turvoPct)}` : ''}`} tone={'good'} />
+        <MetricCard label={basis === 'original' ? 'On-Time vs Original Appt' : 'True On-Time Delivery'} value={fmtPct(kpi.delPct)} sub={`${basis === 'original' ? `Fair ${fmtPct(kpi.fairPct)}` : `Original appt ${fmtPct(kpi.rawPct)}`}${kpi.turvoPct != null ? ` · Turvo ${fmtPct(kpi.turvoPct)}` : ''}`} tone={'good'} />
         <MetricCard label="Late Shipments" value={kpi.late.toString()} sub="Late at delivery" tone={kpi.late === 0 ? 'good' : 'bad'} onClick={() => openList('late')} />
         <MetricCard label="Hidden Late" value={kpi.hidden.toString()} sub="On time in Turvo, date moved" tone={kpi.hidden === 0 ? 'good' : 'bad'} onClick={() => openList('hidden')} />
-        <MetricCard label="Excluded (Rescheduled)" value={kpi.excluded.toString()} sub={`${kpi.customer} customer · ${kpi.shipper} shipper · not in on-time %`} tone="neutral" onClick={() => openList('excluded')} />
+        <MetricCard label="Rescheduled (Cust/Shipper)" value={kpi.excluded.toString()} sub={`${kpi.customer} customer · ${kpi.shipper} shipper · ${basis === 'fair' ? 'not in on-time %' : 'scored in this view'}`} tone="neutral" onClick={() => openList('excluded')} />
         <MetricCard label="Can't Score" value={kpi.unknown.toString()} sub="Missing arrival time" tone={kpi.unknown === 0 ? 'good' : 'warn'} onClick={() => openList('unknown')} />
       </div>
 
@@ -212,7 +222,7 @@ export default function ServiceView() {
                       <td className="py-2">{l.broker || '—'}</td>
                       <td className="py-2 text-xs">{l.lane}</td>
                       <td className="py-2"><StatusBadge status={l.onTimePickup} /></td>
-                      <td className="py-2"><StatusBadge status={l.onTimeDelivery} hidden={l.hiddenLate} /></td>
+                      <td className="py-2"><StatusBadge status={del(l)} hidden={basis === 'fair' && l.hiddenLate} /></td>
                       <td className="py-2 text-xs"><MovedCell load={l} /></td>
                       <td className="py-2 text-right font-mono text-xs">{l.minutesLate ? formatDuration(l.minutesLate) : '—'}</td>
                     </tr>
@@ -237,8 +247,15 @@ export default function ServiceView() {
         loads={drawerLoads}
         extraColumns={[
           { label: 'Pickup', render: l => <StatusBadge status={(l as ComputedLoad).onTimePickup} />, csv: l => (l as ComputedLoad).onTimePickup },
-          { label: 'Delivery', render: l => <StatusBadge status={(l as ComputedLoad).onTimeDelivery} hidden={(l as ComputedLoad).hiddenLate} />, csv: l => (l as ComputedLoad).onTimeDelivery },
-          { label: 'Date moved', render: l => <MovedCell load={l as ComputedLoad} /> },
+          { label: 'Delivery', render: l => <StatusBadge status={del(l as ComputedLoad)} hidden={basis === 'fair' && (l as ComputedLoad).hiddenLate} />, csv: l => del(l as ComputedLoad) },
+          { label: 'Date moved', render: l => <MovedCell load={l as ComputedLoad} />, csv: l => movedText(l as ComputedLoad) },
+          { label: 'Original delivery appt', render: l => formatUSDateTime(l.originalDeliveryAppointment), csv: l => l.originalDeliveryAppointment },
+          { label: 'Current delivery appt', render: l => formatUSDateTime(l.scheduledDeliveryDate), csv: l => l.scheduledDeliveryDate },
+          { label: 'Delivered', render: l => formatUSDateTime(l.deliveryArrival), csv: l => l.deliveryArrival },
+          { label: 'On time vs original', render: l => <StatusBadge status={(l as ComputedLoad).onTimeDeliveryActual} />, csv: l => (l as ComputedLoad).onTimeDeliveryActual },
+          { label: 'On time (fair)', render: l => <StatusBadge status={(l as ComputedLoad).onTimeDelivery} />, csv: l => (l as ComputedLoad).onTimeDelivery },
+          { label: 'Delay fault', render: l => faultText(l as ComputedLoad), csv: l => faultText(l as ComputedLoad) },
+          { label: 'Reason source', render: l => sourceText(l as ComputedLoad), csv: l => sourceText(l as ComputedLoad) },
           { label: 'Late by', align: 'right', render: l => (l.minutesLate ? formatDuration(l.minutesLate) : '—'), csv: l => l.minutesLate },
         ]}
       />
@@ -302,6 +319,15 @@ function MovedCell({ load }: { load: ComputedLoad }) {
   const shift = h == null ? '' : ` ${h > 0 ? '+' : ''}${Math.abs(h) >= 24 ? `${(h / 24).toFixed(1)}d` : `${h.toFixed(0)}h`}`;
   return <span>{REASON_LABEL[load.rescheduleReason]}{shift}</span>;
 }
+
+function movedText(load: ComputedLoad) {
+  if (!load.deliveryRescheduled || !load.rescheduleReason) return '';
+  const h = load.appointmentShiftHours;
+  return `${REASON_LABEL[load.rescheduleReason]}${h == null ? '' : ` ${h > 0 ? '+' : ''}${h.toFixed(0)}h`}`;
+}
+const faultText = (l: ComputedLoad) => (l.delayFault ? DELAY_FAULT_LABEL[l.delayFault] : '—');
+const sourceText = (l: ComputedLoad) =>
+  l.delayFaultSource === 'turvo' ? 'Entered in Turvo' : l.delayFaultSource === 'inferred' ? 'Inferred by sync' : '—';
 
 function formatDuration(minutes: number) {
   if (minutes < 60) return `${minutes}m`;

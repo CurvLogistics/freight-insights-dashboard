@@ -14,6 +14,7 @@ import { laneOf } from '@/lib/computeLoads';
 import { laneCompareRanges } from '@/lib/laneComparison';
 import { normalizeCityNames } from '@/lib/cityNames';
 import { worstCarrierOn } from '@/components/BusinessIntelligence';
+import { deliveryStatus } from '@/lib/delayReasons';
 
 const rescheduled = (extra: Partial<Load>): Load => ({
   loadId: 'T-1', serviceSource: 'turvo', shipmentStatus: 'Delivered',
@@ -346,5 +347,13 @@ describe('QA: CL-27084 — uncovered loads stay in Exception Center in either vi
     const [l] = selectExceptionLoads([uncovered], baseFilters);
     expect(l.carrierName).toBeFalsy();
     expect(l.marginPercent).toBeUndefined();
+  });
+});
+
+describe('Katzman report: on-time basis toggle', () => {
+  it('original basis scores a customer-rescheduled load against its first appointment', () => {
+    const l = { onTimeDelivery: 'Excluded' as const, onTimeDeliveryActual: 'Late' as const };
+    expect(deliveryStatus(l, 'fair')).toBe('Excluded');
+    expect(deliveryStatus(l, 'original')).toBe('Late');
   });
 });

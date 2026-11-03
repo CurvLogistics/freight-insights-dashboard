@@ -58,10 +58,10 @@ export const shipDate = (l: Pick<Load, 'scheduledPickupDate' | 'pickupDate' | 'd
 
 /** What the Booked / Locked toggle means. Shown as a tooltip next to the toggle. */
 export const VIEW_MODE_HELP =
-  'Both views filter by the scheduled pickup date, as in Turvo\'s Shipment Summary (actual pickup or delivery date if none is scheduled), excluding canceled and draft loads. ' +
-  'Booked = every load scheduled to pick up in the period. Locked = only the loads whose financials are final: ' +
+  'Both views filter by the scheduled pickup date, as in Turvo\'s Shipment Summary (actual pickup or delivery date if none is scheduled) — not the date the load was booked. Canceled and draft loads are excluded. ' +
+  'Revenue and carrier spend are the rates on the load in Turvo (booked rates), not invoice amounts. ' +
+  'Booked = every load scheduled to pick up in the period; its rates can still change. Locked = only the loads whose financials are final: ' +
   'status Ready for Billing or Completed, or a ready-to-bill date in Turvo.';
-
 /**
  * Click-to-filter on the Executive Overview (a customer, broker or lane row).
  * One matcher so the KPIs, charts and Business Intelligence all apply it the same way.

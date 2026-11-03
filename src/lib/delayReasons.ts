@@ -86,3 +86,20 @@ export function summarizeOtd(loads: OtdLoad[]): OtdSummary {
   s.truePct = s.trueScored ? (s.trueOnTime / s.trueScored) * 100 : null;
   return s;
 }
+
+/**
+ * Which delivery result a page scores on-time with (Katzman report, item 4).
+ * - 'fair': the default — customer/shipper-caused reschedules are excluded.
+ * - 'original': arrival vs. the ORIGINAL appointment, nothing excused (raw actuals).
+ */
+export type OtdBasis = 'fair' | 'original';
+export const OTD_BASIS_LABEL: Record<OtdBasis, string> = {
+  fair: 'Fair (customer/shipper moves excused)',
+  original: 'Original appointment (nothing excused)',
+};
+export function deliveryStatus(
+  l: { onTimeDelivery: OnTimeStatus; onTimeDeliveryActual: OnTimeStatus },
+  basis: OtdBasis,
+): OnTimeStatus {
+  return basis === 'original' ? l.onTimeDeliveryActual : l.onTimeDelivery;
+}
