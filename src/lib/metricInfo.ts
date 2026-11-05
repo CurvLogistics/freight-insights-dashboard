@@ -9,37 +9,20 @@ export interface MetricInfo {
 
 export const METRIC_INFO = {
   carrierCostMovement: {
-    text:
-      'Shows which lanes are getting more expensive to cover. For each lane with loads in the selected period, ' +
-      'compares the average carrier cost per load against the comparison period, sorted by the biggest $ increase. ' +
-      '"New" means the lane had no loads in the comparison period.',
-    source:
-      'Carrier cost (carrier pay) on each Turvo shipment, synced daily. Lane = origin → destination. ' +
-      'Canceled and draft loads are excluded.',
+    text: 'Lanes where the average carrier cost per load changed most vs the comparison period. "New" = no loads last period.',
+    source: 'Turvo carrier cost',
   },
   onTimePickup: {
-    text:
-      'Share of pickups where the carrier arrived by the pickup appointment. Scored against the current appointment, ' +
-      'so a customer moving the pickup never counts as late. Loads with no pickup arrival time are left out.',
-    source: 'Pickup appointment and actual arrival times from Turvo, synced daily.',
+    text: 'Pickups where the carrier arrived by the current pickup appointment.',
+    source: 'Turvo appointments & arrivals',
   },
   otdOriginal: {
-    text:
-      'Strictest view of delivery: on time only if the carrier arrived by the FIRST delivery appointment set on the load. ' +
-      'Nothing is excused, even if the customer or shipper moved the date. ' +
-      '"Turvo" below is Turvo\'s own on-time flag, which checks the latest appointment — so a moved date can make a late load look on time.',
-    source:
-      'Delivery appointments and arrival times from Turvo, synced daily. The original appointment is captured by our sync from the ' +
-      'appointment history; the Turvo % uses the on-time status Turvo stores on the stop.',
+    text: 'Delivered by the first appointment set on the load — nothing excused. "Turvo %" uses the latest appointment instead.',
+    source: 'Turvo appointments & arrivals',
   },
   otdFair: {
-    text:
-      'Fair view of delivery: scored against the FIRST delivery appointment, but loads the customer rescheduled or the shipper held ' +
-      'are left out, so the carrier is only judged on delays it could own. ' +
-      '"Turvo" below is Turvo\'s own on-time flag, which checks the latest appointment — so a moved date can make a late load look on time.',
-    source:
-      'Delivery appointments and arrival times from Turvo, synced daily. Reschedule reasons are inferred by our sync unless a delay ' +
-      'reason was entered in Turvo; the Turvo % uses the on-time status Turvo stores on the stop.',
+    text: 'Delivered by the first appointment, excluding loads the customer moved or the shipper held. "Turvo %" uses the latest appointment.',
+    source: 'Turvo appointments & arrivals',
   },
 
   // ── Service page ─────────────────────────────────────────────
@@ -52,16 +35,16 @@ export const METRIC_INFO = {
     source: 'Delivery appointments and actual arrival times from Turvo, synced daily.',
   },
   hiddenLate: {
-    text: 'Shipments Turvo marks as on time that were actually late against the original delivery appointment, because the appointment was moved. These make the Turvo on-time % look better than reality.',
-    source: 'Compares Turvo\'s on-time flag with our check against the original appointment from the Turvo appointment history. Only loads synced from Turvo are checked.',
+    text: 'On time in Turvo, but late vs the original appointment because the date was moved.',
+    source: 'Turvo appointment history',
   },
   rescheduled: {
-    text: 'Shipments whose delivery was moved by the customer or held by the shipper. In the Fair view they are left out of on-time %, so the carrier isn\'t blamed; in the Original appointment view they are scored like any other load.',
-    source: 'Turvo appointment history. The reason is inferred by our sync unless a structured delay reason was entered in Turvo.',
+    text: 'Deliveries moved by the customer or held by the shipper. Left out of on-time % in the Fair view.',
+    source: 'Turvo appointment history',
   },
   cantScore: {
-    text: 'Shipments that can\'t be marked on time or late because Turvo has no delivery arrival time. They are left out of on-time % — a high number here means the % is based on fewer loads.',
-    source: 'Missing delivery arrival time on the Turvo shipment.',
+    text: 'No delivery arrival time in Turvo, so these loads are left out of on-time %.',
+    source: 'Turvo arrivals',
   },
 
   // ── Dashboard: Business Health ──────────────────────────────
@@ -78,8 +61,8 @@ export const METRIC_INFO = {
     source: 'Customer revenue and carrier cost on each Turvo shipment.',
   },
   healthMargin: {
-    text: 'Profit as a share of revenue, for loads with both revenue and carrier cost. The change is shown in percentage points (pp). Ranges that include today can read high because recent loads have no carrier cost yet.',
-    source: 'Customer revenue and carrier cost on each Turvo shipment.',
+    text: 'Profit ÷ revenue, for loads with a carrier cost. Change shown in percentage points.',
+    source: 'Turvo revenue & carrier cost',
   },
   healthAvgCost: {
     text: 'Average carrier cost per load, for loads that have a carrier cost. Going up is shown in red because it means coverage is getting more expensive.',
@@ -118,5 +101,45 @@ export const METRIC_INFO = {
   latePickups: {
     text: 'Pickups where the carrier arrived after the current pickup appointment.',
     source: 'Pickup appointment and actual arrival times from Turvo, synced daily.',
+  },
+
+  // ── Executive Overview ──────────────────────────────────────
+  filteredLoads: {
+    text: 'Loads in the selected date range and filters (by scheduled pickup date). Change vs the comparison period.',
+    source: 'Turvo shipments, excl. canceled & draft',
+  },
+  totalRevenue: {
+    text: 'Total billed to customers for the filtered loads, including loads with no carrier cost yet.',
+    source: 'Turvo customer revenue',
+  },
+  grossProfit: {
+    text: 'Revenue minus carrier cost, for loads that have both.',
+    source: 'Turvo revenue & carrier cost',
+  },
+  marginPct: {
+    text: 'Gross profit ÷ revenue. Change shown in percentage points.',
+    source: 'Turvo revenue & carrier cost',
+  },
+
+  // ── Cash Flow ───────────────────────────────────────────────
+  openAr: {
+    text: 'Money customers still owe us. Loads not invoiced yet are estimated from the delivery date.',
+    source: 'Turvo customer invoices',
+  },
+  openAp: {
+    text: 'Money we still owe carriers.',
+    source: 'Turvo carrier invoices',
+  },
+  arPastDue: {
+    text: 'Customer invoices past their due date.',
+    source: 'Turvo customer invoices',
+  },
+  net8Weeks: {
+    text: 'Expected money in minus money out over the next 8 weeks, by due date. Past-due amounts are not included.',
+    source: 'Turvo invoices + estimates',
+  },
+  unpaid180: {
+    text: 'Customer invoices open 180+ days — likely needs collections follow-up.',
+    source: 'Turvo customer invoices',
   },
 } satisfies Record<string, MetricInfo>;

@@ -3,6 +3,7 @@ import { useData } from '@/context/DataContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { TrendingUp, TrendingDown, DollarSign, Package, BarChart3, AlertCircle, X } from 'lucide-react';
 import InfoTip from '@/components/InfoTip';
+import { METRIC_INFO } from '@/lib/metricInfo';
 import { DataTrustBadge, DataWarnings } from '@/components/DataTrust';
 import type { TrustLevel } from '@/components/DataTrust';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, LabelList } from 'recharts';
@@ -229,15 +230,17 @@ export default function DashboardView() {
           tip={`Active loads, all dates, for the current owner / team / equipment filters. Canceled and draft loads are excluded (${rawLoads.length.toLocaleString('en-US')} synced in total) — same base as Data Quality.`}
         />
         <KPICard title="Filtered Loads" value={totalLoads.toString()} icon={Package} color="primary"
+          tip={METRIC_INFO.filteredLoads.text} tipSource={METRIC_INFO.filteredLoads.source}
           comparison={prevPeriodMetrics ? { current: totalLoads, previous: prevPeriodMetrics.loads } : undefined} isCount compLabel={prevPeriodMetrics?.modeLabel} />
         <KPICard title="Total Revenue" value={fmt(totalRevenue)} icon={DollarSign} color="primary"
+          tip={METRIC_INFO.totalRevenue.text} tipSource={METRIC_INFO.totalRevenue.source}
           comparison={prevPeriodMetrics ? { current: totalRevenue, previous: prevPeriodMetrics.revenue } : undefined} compLabel={prevPeriodMetrics?.modeLabel} />
         <KPICard title="Gross Profit" value={fmt(totalProfit)} icon={totalProfit >= 0 ? TrendingUp : TrendingDown} color="accent"
           comparison={prevPeriodMetrics ? { current: totalProfit, previous: prevPeriodMetrics.profit } : undefined} compLabel={prevPeriodMetrics?.modeLabel}
-          tip="Revenue minus carrier cost" />
+          tip={METRIC_INFO.grossProfit.text} tipSource={METRIC_INFO.grossProfit.source} />
         <KPICard title="Margin %" value={pct(avgMargin)} icon={BarChart3} color="accent"
           comparison={prevPeriodMetrics ? { current: avgMargin, previous: prevPeriodMetrics.margin } : undefined} isMargin compLabel={prevPeriodMetrics?.modeLabel}
-          tip="Gross profit as a percentage of revenue" />
+          tip={METRIC_INFO.marginPct.text} tipSource={METRIC_INFO.marginPct.source} />
       </div>
 
       {/* Data Quality */}
@@ -389,9 +392,10 @@ interface KPICardProps {
   isCount?: boolean;
   compLabel?: string;
   tip?: string;
+  tipSource?: string;
 }
 
-function KPICard({ title, value, icon: Icon, color, comparison, isMargin, isCount, compLabel = 'vs prior', tip }: KPICardProps) {
+function KPICard({ title, value, icon: Icon, color, comparison, isMargin, isCount, compLabel = 'vs prior', tip, tipSource }: KPICardProps) {
   let changeEl: React.ReactNode = null;
   if (comparison && comparison.previous > 0) {
     const diff = comparison.current - comparison.previous;
@@ -415,7 +419,7 @@ function KPICard({ title, value, icon: Icon, color, comparison, isMargin, isCoun
       <CardContent className="p-5">
         <div className="flex items-center justify-between">
           <div className="min-w-0 flex-1">
-            <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide flex items-center gap-1">{title}{tip && <InfoTip text={tip} />}</p>
+            <div className="text-xs text-muted-foreground font-medium uppercase tracking-wide flex items-center gap-1">{title}{tip && <InfoTip text={tip} source={tipSource} />}</div>
             <p className="text-2xl font-bold mt-1 font-mono">{value}</p>
             {changeEl}
           </div>

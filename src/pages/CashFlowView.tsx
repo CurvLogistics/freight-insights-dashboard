@@ -4,6 +4,7 @@ import { useData } from '@/context/DataContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import InfoTip from '@/components/InfoTip';
+import { METRIC_INFO, type MetricInfo } from '@/lib/metricInfo';
 import { DataWarnings } from '@/components/DataTrust';
 import LoadListDrawer from '@/components/LoadListDrawer';
 import { formatUSDate } from '@/lib/dates';
@@ -44,11 +45,11 @@ export default function CashFlowView() {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        <Kpi label="Open AR" value={usd(sum(ar))} sub={`${ar.filter(i => i.invoiced).length} invoiced · ${ar.filter(i => !i.invoiced).length} not yet`} onClick={() => setDrawer({ title: 'Open AR', items: ar })} />
-        <Kpi label="Open AP" value={usd(sum(ap))} sub={`${ap.length} carrier payables`} onClick={() => setDrawer({ title: 'Open AP', items: ap })} />
-        <Kpi label="AR Past Due" value={usd(fc.overdueAr)} tone={fc.overdueAr > 0 ? 'bad' : 'good'} sub="Customers late paying" onClick={() => setDrawer({ title: 'AR past due', items: ar.filter(i => i.overdue) })} />
-        <Kpi label="Net Next 8 Weeks" value={usd(net8)} tone={net8 >= 0 ? 'good' : 'bad'} sub="In minus out (excl. past due)" />
-        <Kpi label={`Unpaid ${AR_FLAG_DAYS}+ Days`} value={flagged.length.toString()} tone={flagged.length ? 'bad' : 'good'} sub={usd(sum(flagged))} onClick={() => setDrawer({ title: `AR unpaid ${AR_FLAG_DAYS}+ days`, items: flagged })} />
+        <Kpi label="Open AR" info={METRIC_INFO.openAr} value={usd(sum(ar))} sub={`${ar.filter(i => i.invoiced).length} invoiced · ${ar.filter(i => !i.invoiced).length} not yet`} onClick={() => setDrawer({ title: 'Open AR', items: ar })} />
+        <Kpi label="Open AP" info={METRIC_INFO.openAp} value={usd(sum(ap))} sub={`${ap.length} carrier payables`} onClick={() => setDrawer({ title: 'Open AP', items: ap })} />
+        <Kpi label="AR Past Due" info={METRIC_INFO.arPastDue} value={usd(fc.overdueAr)} tone={fc.overdueAr > 0 ? 'bad' : 'good'} sub="Customers late paying" onClick={() => setDrawer({ title: 'AR past due', items: ar.filter(i => i.overdue) })} />
+        <Kpi label="Net Next 8 Weeks" info={METRIC_INFO.net8Weeks} value={usd(net8)} tone={net8 >= 0 ? 'good' : 'bad'} sub="In minus out (excl. past due)" />
+        <Kpi label={`Unpaid ${AR_FLAG_DAYS}+ Days`} info={METRIC_INFO.unpaid180} value={flagged.length.toString()} tone={flagged.length ? 'bad' : 'good'} sub={usd(sum(flagged))} onClick={() => setDrawer({ title: `AR unpaid ${AR_FLAG_DAYS}+ days`, items: flagged })} />
       </div>
 
       <Card>
@@ -116,14 +117,18 @@ function AgingCard({ title, rows, onOpen }: {
   );
 }
 
-function Kpi({ label, value, sub, tone = 'neutral', onClick }: {
+function Kpi({ label, value, sub, tone = 'neutral', onClick, info }: {
   label: string; value: string; sub: string; tone?: 'good' | 'bad' | 'neutral'; onClick?: () => void;
+  info?: MetricInfo;
 }) {
   const color = tone === 'good' ? 'text-success' : tone === 'bad' ? 'text-destructive' : 'text-foreground';
   return (
     <Card className={onClick ? 'cursor-pointer hover:border-primary/50 transition-colors' : ''} onClick={onClick}>
       <CardContent className="p-4 text-center">
-        <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wide">{label}</p>
+        <div className="text-[11px] text-muted-foreground font-medium uppercase tracking-wide flex items-center justify-center gap-1">
+          {label}
+          {info && <InfoTip text={info.text} source={info.source} />}
+        </div>
         <p className={`text-2xl font-bold mt-1.5 font-mono ${color}`}>{value}</p>
         <p className="text-[11px] text-muted-foreground mt-1">{sub}</p>
       </CardContent>
