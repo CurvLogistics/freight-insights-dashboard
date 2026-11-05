@@ -16,6 +16,7 @@ import { normalizeCityNames } from '@/lib/cityNames';
 import { worstCarrierOn } from '@/components/BusinessIntelligence';
 import { deliveryStatus } from '@/lib/delayReasons';
 import { brokerPeriodComparison } from '@/lib/brokerPeriodComparison';
+import { dwellHours, hoursAtShipperOf, hoursAtReceiverOf, longWaitAtReceiver } from '@/lib/dwell';
 
 const rescheduled = (extra: Partial<Load>): Load => ({
   loadId: 'T-1', serviceSource: 'turvo', shipmentStatus: 'Delivered',
@@ -411,5 +412,18 @@ describe('Productivity period comparison', () => {
     expect(c.reason).toMatch(/historical/i);
     expect(c.prev.loads).toBe(0);
     expect(c.dataStart).toBe('2026-08-15');
+  });
+});
+
+describe('check-in / check-out dwell time', () => {
+  it('computes hours between check-in and check-out and ignores bad data', () => {
+    expect(dwellHours('2026-11-02T11:00:00Z', '2026-11-02T12:04:00Z')).toBe(1.1);
+    expect(dwellHours('2026-11-02T12:00:00Z', '2026-11-02T11:00:00Z')).toBeNull();
+    expect(dwellHours(undefined, '2026-11-02T11:00:00Z')).toBeNull();
+    // Sync value wins; negative sync values fall back to the timestamps
+    expect(hoursAtShipperOf({ hoursAtShipper: 4.5 })).toBe(4.5);
+    expect(hoursAtShipperOf({ hoursAtShipper: -1, pickupArrival: '2026-10-27T22:00:00Z', pickupDeparture: '2026-10-28T00:00:00Z' })).toBe(2);
+    expect(hoursAtReceiverOf({ deliveryArrival: '2026-11-02T11:00:00Z', deliveryDeparture: '2026-11-02T14:00:00Z' })).toBe(3);
+    expect(longWaitAtReceiver({ deliveryArrival: '2026-11-02T11:00:00Z', deliveryDeparture: '2026-11-02T14:00:00Z' })).toBe(true);
   });
 });

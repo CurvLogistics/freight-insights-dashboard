@@ -9,9 +9,10 @@ import LoadListDrawer from '@/components/LoadListDrawer';
 import { isScored } from '@/lib/computeLoads';
 import { summarizeOtd, deliveryStatus, OTD_BASIS_LABEL, DELAY_FAULT_LABEL, type OtdBasis } from '@/lib/delayReasons';
 import { formatUSDateTime } from '@/lib/dates';
+import { hoursAtShipperOf, hoursAtReceiverOf, longWaitAtShipper, longWaitAtReceiver, formatHours, LONG_WAIT_HOURS } from '@/lib/dwell';
 import { METRIC_INFO, type MetricInfo } from '@/lib/metricInfo';
 
-type StatusFilter = 'all' | 'on-time' | 'late' | 'hidden' | 'customer' | 'shipper' | 'excluded' | 'on-time-pickup' | 'late-pickup' | 'unknown';
+type StatusFilter = 'all' | 'on-time' | 'late' | 'hidden' | 'customer' | 'shipper' | 'excluded' | 'on-time-pickup' | 'late-pickup' | 'unknown' | 'long-wait';
 type GroupBy = 'broker' | 'team' | 'customer' | 'carrier';
 
 const STATUS_FILTERS: { key: StatusFilter; label: string; match: (l: ComputedLoad, del: ComputedLoad['onTimeDelivery']) => boolean }[] = [
@@ -25,6 +26,7 @@ const STATUS_FILTERS: { key: StatusFilter; label: string; match: (l: ComputedLoa
   { key: 'shipper', label: 'Shipper fault (excused)', match: l => l.excludedFromOnTime && l.delayFault === 'shipper' },
   { key: 'excluded', label: 'Rescheduled by customer/shipper', match: l => l.excludedFromOnTime },
   { key: 'unknown', label: "Can't score", match: (_l, d) => d === 'Unknown' },
+  { key: 'long-wait', label: `Waited ${LONG_WAIT_HOURS}h+ at shipper/receiver`, match: l => longWaitAtShipper(l) || longWaitAtReceiver(l) },
 ];
 
 const GROUP_LABEL: Record<GroupBy, string> = { broker: 'Broker', team: 'Team', customer: 'Customer', carrier: 'Carrier' };
@@ -76,6 +78,8 @@ export default function ServiceView() {
       shipper: loads.filter(l => l.excludedFromOnTime && l.delayFault === 'shipper').length,
       excluded: loads.filter(l => l.excludedFromOnTime).length,
       unknown: loads.filter(l => del(l) === 'Unknown').length,
+      longWait: loads.filter(l => longWaitAtShipper(l) || longWaitAtReceiver(l)).length,
+      lateLongWait: knownDel.filter(l => del(l) === 'Late' && (longWaitAtShipper(l) || longWaitAtReceiver(l))).length,
     };
   }, [loads, basis]);
 
@@ -133,7 +137,7 @@ export default function ServiceView() {
         ]} />
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 2xl:grid-cols-8 gap-3">
         <MetricCard label="Total Shipments" value={kpi.total.toLocaleString('en-US')} sub="In current filters" tone="neutral" info={METRIC_INFO.totalShipments} onClick={() => openList('all')} />
         <MetricCard label="On-Time Pickup" value={fmtPct(kpi.puPct)} sub={`${kpi.puLate} late pickups`} tone={kpi.puPct != null && kpi.puPct >= 90 ? 'good' : 'warn'} info={METRIC_INFO.onTimePickup} onClick={() => openList('on-time-pickup')} secondary={{ label: `${kpi.puLate} late`, onClick: () => openList('late-pickup') }} />
         <MetricCard label={basis === 'original' ? 'On-Time vs Original Appt' : 'True On-Time Delivery'} value={fmtPct(kpi.delPct)} sub={`${basis === 'original' ? `Fair ${fmtPct(kpi.fairPct)}` : `Original appt ${fmtPct(kpi.rawPct)}`}${kpi.turvoPct != null ? ` · Turvo ${fmtPct(kpi.turvoPct)}` : ''}`} tone={'good'} info={basis === 'original' ? METRIC_INFO.otdOriginal : METRIC_INFO.otdFair} />
@@ -141,6 +145,7 @@ export default function ServiceView() {
         <MetricCard label="Hidden Late" value={kpi.hidden.toString()} sub="On time in Turvo, date moved" tone={kpi.hidden === 0 ? 'good' : 'bad'} info={METRIC_INFO.hiddenLate} onClick={() => openList('hidden')} />
         <MetricCard label="Rescheduled (Cust/Shipper)" value={kpi.excluded.toString()} sub={`${kpi.customer} customer · ${kpi.shipper} shipper · ${basis === 'fair' ? 'not in on-time %' : 'scored in this view'}`} tone="neutral" info={METRIC_INFO.rescheduled} onClick={() => openList('excluded')} />
         <MetricCard label="Can't Score" value={kpi.unknown.toString()} sub="Missing arrival time" tone={kpi.unknown === 0 ? 'good' : 'warn'} info={METRIC_INFO.cantScore} onClick={() => openList('unknown')} />
+        <MetricCard label={`Long Wait (${LONG_WAIT_HOURS}h+)`} value={kpi.longWait.toString()} sub={`${kpi.lateLongWait} of ${kpi.late} late loads`} tone={kpi.lateLongWait === 0 ? 'good' : 'warn'} info={METRIC_INFO.longWait} onClick={() => openList('long-wait')} />
       </div>
 
       <Card>
@@ -212,6 +217,8 @@ export default function ServiceView() {
                   <th className="text-left py-2">Pickup</th>
                   <th className="text-left py-2">Delivery</th>
                   <th className="text-left py-2">Date moved</th>
+                  <th className="text-right py-2 whitespace-nowrap">At shipper</th>
+                  <th className="text-right py-2 whitespace-nowrap">At receiver</th>
                   <th className="text-right py-2">Late by</th>
                 </tr></thead>
                 <tbody>
@@ -225,6 +232,8 @@ export default function ServiceView() {
                       <td className="py-2"><StatusBadge status={l.onTimePickup} /></td>
                       <td className="py-2"><StatusBadge status={del(l)} hidden={basis === 'fair' && l.hiddenLate} /></td>
                       <td className="py-2 text-xs"><MovedCell load={l} /></td>
+                      <td className={`py-2 text-right font-mono text-xs ${longWaitAtShipper(l) ? 'text-warning' : ''}`}>{formatHours(hoursAtShipperOf(l))}</td>
+                      <td className={`py-2 text-right font-mono text-xs ${longWaitAtReceiver(l) ? 'text-warning' : ''}`}>{formatHours(hoursAtReceiverOf(l))}</td>
                       <td className="py-2 text-right font-mono text-xs">{l.minutesLate ? formatDuration(l.minutesLate) : '—'}</td>
                     </tr>
                   ))}
@@ -250,9 +259,14 @@ export default function ServiceView() {
           { label: 'Pickup', render: l => <StatusBadge status={(l as ComputedLoad).onTimePickup} />, csv: l => (l as ComputedLoad).onTimePickup },
           { label: 'Delivery', render: l => <StatusBadge status={del(l as ComputedLoad)} hidden={basis === 'fair' && (l as ComputedLoad).hiddenLate} />, csv: l => del(l as ComputedLoad) },
           { label: 'Date moved', render: l => <MovedCell load={l as ComputedLoad} />, csv: l => movedText(l as ComputedLoad) },
+          { label: 'Pickup check-in', render: l => formatUSDateTime(l.pickupArrival), csv: l => l.pickupArrival },
+          { label: 'Pickup check-out', render: l => formatUSDateTime(l.pickupDeparture), csv: l => l.pickupDeparture },
+          { label: 'At shipper', align: 'right', render: l => formatHours(hoursAtShipperOf(l)), csv: l => hoursAtShipperOf(l) },
           { label: 'Original delivery appt', render: l => formatUSDateTime(l.originalDeliveryAppointment), csv: l => l.originalDeliveryAppointment },
           { label: 'Current delivery appt', render: l => formatUSDateTime(l.scheduledDeliveryDate), csv: l => l.scheduledDeliveryDate },
-          { label: 'Delivered', render: l => formatUSDateTime(l.deliveryArrival), csv: l => l.deliveryArrival },
+          { label: 'Delivery check-in', render: l => formatUSDateTime(l.deliveryArrival), csv: l => l.deliveryArrival },
+          { label: 'Delivery check-out', render: l => formatUSDateTime(l.deliveryDeparture), csv: l => l.deliveryDeparture },
+          { label: 'At receiver', align: 'right', render: l => formatHours(hoursAtReceiverOf(l)), csv: l => hoursAtReceiverOf(l) },
           { label: 'On time vs original', render: l => <StatusBadge status={(l as ComputedLoad).onTimeDeliveryActual} />, csv: l => (l as ComputedLoad).onTimeDeliveryActual },
           { label: 'On time (fair)', render: l => <StatusBadge status={(l as ComputedLoad).onTimeDelivery} />, csv: l => (l as ComputedLoad).onTimeDelivery },
           { label: 'Delay fault', render: l => faultText(l as ComputedLoad), csv: l => faultText(l as ComputedLoad) },

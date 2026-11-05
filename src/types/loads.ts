@@ -28,8 +28,14 @@ export interface Load {
   serviceReason?: string;
 
   // --- Service fields from the Turvo sync (turvo-mcp-server/service_status.py) ---
+  /** Check-in at the (first) pickup: Turvo stop attributes.arrival. */
   pickupArrival?: string;
+  /** Check-out at the (first) pickup: Turvo stop attributes.departed. */
+  pickupDeparture?: string;
+  /** Check-in at the (last) delivery: Turvo stop attributes.arrival. */
   deliveryArrival?: string;
+  /** Check-out at the (last) delivery: Turvo stop attributes.departed. */
+  deliveryDeparture?: string;
   originalPickupAppointment?: string;
   originalDeliveryAppointment?: string;
   /** Pickup vs. its current appointment (customer pickup changes never count as late). */
@@ -46,6 +52,8 @@ export interface Load {
   deliveryScoredAgainst?: 'original' | 'current';
   appointmentShiftHours?: number;
   hoursAtShipper?: number;
+  /** Delivery check-in to check-out, in hours (set by the sync once it sends delivery check-out). */
+  hoursAtReceiver?: number;
   minutesLate?: number;
   toReview?: boolean;
   serviceSource?: 'turvo' | 'csv';

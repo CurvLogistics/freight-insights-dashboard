@@ -367,7 +367,12 @@ export default function BusinessIntelligence(props: BusinessIntelligenceProps = 
                     <TableHead className="text-xs text-right">Loads</TableHead>
                     <TableHead className="text-xs text-right">Margin %</TableHead>
                     <TableHead className="text-xs text-right">Margin Δ</TableHead>
-                    <TableHead className="text-xs">Worst carrier</TableHead>
+                    <TableHead className="text-xs">
+                      <span className="inline-flex items-center gap-1">
+                        Carrier to check in with
+                        <InfoTip text="The carrier with the lowest margin on this lane this period (ties: more late deliveries). A good place to start a rate or service conversation — not a judgment on the carrier." />
+                      </span>
+                    </TableHead>
                     <TableHead className="text-xs">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -390,8 +395,8 @@ export default function BusinessIntelligence(props: BusinessIntelligenceProps = 
                           <div className="max-w-[180px]">
                             <div className="font-medium truncate" title={l.worstCarrier.name}>{l.worstCarrier.name}</div>
                             <div className="text-[10px] text-muted-foreground">
-                              {l.worstCarrier.loads} load{l.worstCarrier.loads === 1 ? '' : 's'} · <span className={l.worstCarrier.margin < FLOOR_TARGET ? 'text-destructive' : ''}>{pct(l.worstCarrier.margin)}</span>
-                              {l.worstCarrier.late > 0 && <> · <span className="text-destructive">{l.worstCarrier.late} late</span></>}
+                              {l.worstCarrier.loads} load{l.worstCarrier.loads === 1 ? '' : 's'} · {pct(l.worstCarrier.margin)} margin
+                              {l.worstCarrier.late > 0 && <> · {l.worstCarrier.late} late</>}
                             </div>
                           </div>
                         ) : <span className="text-muted-foreground">—</span>}

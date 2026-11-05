@@ -142,4 +142,8 @@ export const METRIC_INFO = {
     text: 'Customer invoices open 180+ days — likely needs collections follow-up.',
     source: 'Turvo customer invoices',
   },
+  longWait: {
+    text: 'Trucks that waited 2h+ between check-in and check-out at the shipper or receiver. Often the reason a load delivers late, so check these before blaming the carrier.',
+    source: 'Turvo stop check-in / check-out times',
+  },
 } satisfies Record<string, MetricInfo>;
