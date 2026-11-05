@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@clerk/react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -12,6 +13,7 @@ import {
 import { Loader2, RefreshCw, Trash2, Users } from 'lucide-react';
 import { useData } from '@/context/DataContext';
 import { listUsers, setUserRole, removeUser, type AssignableRole, type DashboardUser } from '@/lib/usersApi';
+import { PENDING_USERS_KEY } from '@/hooks/usePendingUsers';
 
 const ROLE_LABELS: Record<AssignableRole, string> = {
   none: 'No access',
@@ -27,6 +29,7 @@ const fmtDate = (ms: number | null) => (ms ? new Date(ms).toLocaleDateString('en
 /** Admin only. People sign up themselves; this is where an admin grants them access. */
 export default function UsersRolesCard() {
   const { getToken } = useAuth();
+  const queryClient = useQueryClient();
   const { rawLoads } = useData();
   const [users, setUsers] = useState<DashboardUser[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -42,13 +45,16 @@ export default function UsersRolesCard() {
     setLoading(true);
     setError(null);
     try {
-      setUsers(await listUsers(getToken));
+      const list = await listUsers(getToken);
+      setUsers(list);
+      // Keep the sidebar "waiting" badge in step with this card after a save or remove
+      queryClient.setQueryData(PENDING_USERS_KEY, list.filter(u => u.role === 'none').length);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load users');
     } finally {
       setLoading(false);
     }
-  }, [getToken]);
+  }, [getToken, queryClient]);
 
   useEffect(() => { void load(); }, [load]);
 

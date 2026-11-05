@@ -11,6 +11,7 @@ import DateInputUS from '@/components/DateInputUS';
 import TeamFilter from '@/components/TeamFilter';
 import { VIEW_MODE_HELP } from '@/lib/filters';
 import { formatBusinessDateTime } from '@/lib/dates';
+import { usePendingUsers } from '@/hooks/usePendingUsers';
 
 const navItems: { id: ViewType; label: string; icon: React.ElementType }[] = [
   { id: 'dashboard', label: 'Executive Overview', icon: LayoutDashboard },
@@ -30,6 +31,8 @@ const SHOW_CSV_IMPORT = false;
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { canSeeAll } = useRole();
+  const pendingUsers = usePendingUsers();
+  
   const {
     currentView, setCurrentView, filters, setFilters, importCSV,
     teams, owners, equipmentTypes, comparisonMode, setComparisonMode,
@@ -107,6 +110,15 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             >
               <Icon className="w-4 h-4" />
               {label}
+              {id === 'settings' && pendingUsers > 0 && (
+                <span
+                  className="ml-auto min-w-[20px] h-5 px-1.5 rounded-full bg-destructive text-destructive-foreground text-[11px] font-semibold flex items-center justify-center"
+                  title={`${pendingUsers} ${pendingUsers === 1 ? 'person is' : 'people are'} waiting for access`}
+                  aria-label={`${pendingUsers} waiting for access`}
+                >
+                  {pendingUsers}
+                </span>
+              )}
             </button>
           ))}
         </nav>
