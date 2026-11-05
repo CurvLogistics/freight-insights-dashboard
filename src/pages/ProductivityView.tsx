@@ -19,6 +19,7 @@ export default function ProductivityView() {
   const data = [...groupBy(loads, l => ownerOf(l)).entries()]
     .map(([name, ls]) => { const a = aggregate(ls); return { name, loads: a.loads, revenue: a.revenue, profit: a.profit, margin: a.margin }; })
     .sort((a, b) => b.revenue - a.revenue);
+  const totals = useMemo(() => aggregate(loads), [loads]);
 
   const drill = useMemo(() => (selected ? brokerDrilldown(loads, selected) : null), [loads, selected]);
   const summary = selected ? data.find(d => d.name === selected) : undefined;
@@ -66,6 +67,19 @@ export default function ProductivityView() {
                   </tr>
                 ))}
               </tbody>
+              {data.length > 0 && (
+                <tfoot className="sticky bottom-0 z-10">
+                  <tr className="border-t-2 bg-muted font-semibold">
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      Total <span className="font-normal text-muted-foreground text-xs">({data.length} {data.length === 1 ? 'person' : 'people'})</span>
+                    </td>
+                    <td className="px-4 py-3 text-right font-mono whitespace-nowrap">{totals.loads.toLocaleString('en-US')}</td>
+                    <td className="px-4 py-3 text-right font-mono whitespace-nowrap">{fmt(totals.revenue)}</td>
+                    <td className="px-4 py-3 text-right font-mono whitespace-nowrap">{fmt(totals.profit)}</td>
+                    <td className={`px-4 py-3 text-right font-mono whitespace-nowrap ${marginCls(totals.margin)}`}>{totals.margin.toFixed(1)}%</td>
+                  </tr>
+                </tfoot>
+              )}
             </table>
           </div>
         </CardContent>
