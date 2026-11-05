@@ -11,6 +11,8 @@ import { DataTrustBadge, DataWarnings } from '@/components/DataTrust';
 import { formatUSDate } from '@/lib/dates';
 import { summarizeOtd, type OtdSummary, deliveryStatus, OTD_BASIS_LABEL, type OtdBasis } from '@/lib/delayReasons';
 import { businessTodayDate } from '@/lib/filters';
+import { KPICard, MiniCard, otpColor } from '@/components/ScorecardCards';
+import { METRIC_INFO } from '@/lib/metricInfo';
 
 /* ── Weekly trend helpers ── */
 
@@ -452,12 +454,12 @@ export default function CarrierScorecardView() {
 
       {/* KPI Bar */}
       <div className={`grid grid-cols-2 gap-3 ${shareView ? 'md:grid-cols-4' : 'md:grid-cols-6'}`}>
-        <KPICard label="Total Loads" value={totals.loads.toLocaleString('en-US')} />
-        <KPICard label="Total Spend" value={fmt(totals.cost)} emphasis />
-        {!shareView && <KPICard label="Total Revenue" value={fmt(totals.revenue)} />}
-        <KPICard label="Avg Cost / Load" value={fmt(totals.avgCost)} />
-        {!shareView && <KPICard label="Avg Margin" value={pct(totals.margin)} good={totals.margin >= 15} />}
-        <KPICard label="Active Lanes" value={totals.activeLanes.toString()} />
+        <KPICard label="Total Loads" value={totals.loads.toLocaleString('en-US')} info={METRIC_INFO.scTotalLoads} />
+        <KPICard label="Total Spend" value={fmt(totals.cost)} emphasis info={METRIC_INFO.scTotalSpend} />
+        {!shareView && <KPICard label="Total Revenue" value={fmt(totals.revenue)} info={METRIC_INFO.scTotalRevenue} />}
+        <KPICard label="Avg Cost / Load" value={fmt(totals.avgCost)} info={METRIC_INFO.scAvgCost} />
+        {!shareView && <KPICard label="Avg Margin" value={pct(totals.margin)} good={totals.margin >= 15} info={METRIC_INFO.scAvgMargin} />}
+        <KPICard label="Active Lanes" value={totals.activeLanes.toString()} info={METRIC_INFO.scActiveLanes} />
       </div>
 
       {/* Filters */}
@@ -591,7 +593,7 @@ export default function CarrierScorecardView() {
                         <tr key={`${c.name}-detail`} className="bg-muted/10">
                           <td colSpan={colSpan} className="px-6 py-4">
                             {shareView ? (
-                              <ShareableDetail c={c} />
+                              <ShareableDetail c={c} basis={basis} />
                             ) : (
                               <InternalDetail c={c} handleLaneSort={handleLaneSort} laneSortKey={laneSortKey} laneSortDir={laneSortDir} regionLaneAvgCosts={regionLaneAvgCosts} />
                             )}
@@ -612,11 +614,9 @@ export default function CarrierScorecardView() {
 
 /* ── Shareable (carrier-facing) expanded detail ── */
 
-function ShareableDetail({ c }: { c: CarrierRow }) {
+function ShareableDetail({ c, basis }: { c: CarrierRow; basis: OtdBasis }) {
   const lastShipFmt = c.lastShipDate ? new Date(c.lastShipDate + 'T00:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) : '—';
   const daysSinceLast = c.lastShipDate ? Math.floor((businessTodayDate().getTime() - new Date(c.lastShipDate + 'T00:00:00Z').getTime()) / 86400000) : null;
-
-  const otpColor = (v: number | null) => v == null ? '' : v >= 95 ? 'text-green-600' : v >= 90 ? 'text-yellow-600' : 'text-red-600';
 
   return (
     <div className="border border-border rounded-lg p-5 bg-card space-y-4">
@@ -642,19 +642,16 @@ function ShareableDetail({ c }: { c: CarrierRow }) {
       {/* Service Performance */}
       <div className="text-xs font-semibold text-muted-foreground">Service Performance</div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div className="bg-card border border-border rounded-md px-3 py-2">
-          <div className="text-[10px] text-muted-foreground">On-Time Pickup</div>
-          <div className={`text-sm font-bold font-mono ${otpColor(c.otpPct)}`}>{c.otpPct != null ? `${c.otpPct.toFixed(1)}%` : 'N/A'}</div>
-        </div>
-        <div className="bg-card border border-border rounded-md px-3 py-2">
-          <div className="text-[10px] text-muted-foreground">True On-Time Delivery</div>
-          <div className={`text-sm font-bold font-mono ${otpColor(c.otdPct)}`}>{c.otdPct != null ? `${c.otdPct.toFixed(1)}%` : 'N/A'}</div>
-        </div>
-        <div className="bg-card border border-border rounded-md px-3 py-2" title="Arrival vs. the original appointment — nothing excused">
-          <div className="text-[10px] text-muted-foreground">Raw On-Time Delivery</div>
-          <div className="text-sm font-bold font-mono text-muted-foreground">{c.otd.rawPct != null ? `${c.otd.rawPct.toFixed(1)}%` : 'N/A'}</div>
-        </div>
-        <MiniCard label="Pickup Changes" value={c.loads > 0 ? `${((c.latePickup / c.loads) * 100).toFixed(1)}%` : '0%'} />
+        <MiniCard label="On-Time Pickup" value={c.otpPct != null ? `${c.otpPct.toFixed(1)}%` : 'N/A'} valueClassName={otpColor(c.otpPct)} info={METRIC_INFO.onTimePickup} />
+        {/* otdPct follows the Fair / Original appt toggle, so the label and tooltip must too. */}
+        <MiniCard
+          label={basis === 'original' ? 'On-Time vs Original Appt' : 'True On-Time Delivery'}
+          value={c.otdPct != null ? `${c.otdPct.toFixed(1)}%` : 'N/A'}
+          valueClassName={otpColor(c.otdPct)}
+          info={basis === 'original' ? METRIC_INFO.otdOriginal : METRIC_INFO.otdFair}
+        />
+        <MiniCard label="Raw On-Time Delivery" value={c.otd.rawPct != null ? `${c.otd.rawPct.toFixed(1)}%` : 'N/A'} valueClassName="text-muted-foreground" info={METRIC_INFO.otdOriginal} />
+        <MiniCard label="Late Pickups" value={c.latePickup.toLocaleString('en-US')} info={METRIC_INFO.latePickups} />
       </div>
 
       {/* Issue Breakdown */}
@@ -754,7 +751,7 @@ function InternalDetail({ c, handleLaneSort, laneSortKey, laneSortDir, regionLan
 
       {/* Claims + Payment row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <MiniCard label="Pickup Changes" value={`${c.latePickup} (${pickupChangePct}%)`} />
+        <MiniCard label="Late Pickups" value={`${c.latePickup} (${pickupChangePct}%)`} info={METRIC_INFO.latePickups} />
         <MiniCard label="Late Deliveries" value={`${c.lateDelivery}`} />
         <MiniCard label="Payment Terms" value={c.avgDaysToPay != null ? `~Net ${Math.round(c.avgDaysToPay)}` : '—'} />
         <MiniCard label="Margin" value={pct(c.margin)} />
@@ -818,26 +815,6 @@ function InternalDetail({ c, handleLaneSort, laneSortKey, laneSortDir, regionLan
 }
 
 /* ── Small components ── */
-function KPICard({ label, value, good, emphasis }: { label: string; value: string; good?: boolean; emphasis?: boolean }) {
-  return (
-    <Card>
-      <CardContent className="p-4">
-        <div className="text-xs text-muted-foreground">{label}</div>
-        <div className={`text-xl font-bold font-mono mt-1 ${good === true ? 'text-success' : good === false ? 'text-destructive' : ''} ${emphasis ? 'text-primary' : ''}`}>{value}</div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function MiniCard({ label, value, good, emphasis }: { label: string; value: string; good?: boolean; emphasis?: boolean }) {
-  return (
-    <div className="bg-card border border-border rounded-md px-3 py-2">
-      <div className="text-[10px] text-muted-foreground">{label}</div>
-      <div className={`text-sm font-bold font-mono ${good === true ? 'text-success' : good === false ? 'text-destructive' : ''} ${emphasis ? 'text-primary' : ''}`}>{value}</div>
-    </div>
-  );
-}
-
 function SummaryField({ label, value, bold }: { label: string; value: string; bold?: boolean }) {
   return (
     <div>

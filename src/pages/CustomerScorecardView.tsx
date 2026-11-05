@@ -10,6 +10,8 @@ import { isScored, UNKNOWN_LANE } from '@/lib/computeLoads';
 import { summarizeOtd, type OtdSummary } from '@/lib/delayReasons';
 import { DataTrustBadge, DataWarnings } from '@/components/DataTrust';
 import { businessTodayDate } from '@/lib/filters';
+import { KPICard, MiniCard, otpColor } from '@/components/ScorecardCards';
+import { METRIC_INFO, type MetricInfo } from '@/lib/metricInfo';
 
 const fmt = (n?: number | null) => n != null ? `$${Math.round(n).toLocaleString('en-US')}` : '—';
 const pct = (n?: number | null) => n != null ? `${n.toFixed(1)}%` : '—';
@@ -289,12 +291,12 @@ export default function CustomerScorecardView() {
 
       {/* KPI Bar */}
       <div className={`grid grid-cols-2 ${shareView ? 'md:grid-cols-4' : 'md:grid-cols-6'} gap-3`}>
-        <KPICard label="Total Loads" value={totals.loads.toLocaleString('en-US')} />
-        <KPICard label="Total Revenue" value={fmt(totals.revenue)} />
-        {!shareView && <KPICard label="Total Spend" value={fmt(totals.cost)} />}
-        {!shareView && <KPICard label="Total Profit" value={fmt(totals.profit)} good={totals.profit > 0} />}
-        {!shareView && <KPICard label="Avg Margin" value={pct(totals.margin)} good={totals.margin >= 15} />}
-        <KPICard label="Active Lanes" value={totals.activeLanes.toString()} />
+        <KPICard label="Total Loads" value={totals.loads.toLocaleString('en-US')} info={METRIC_INFO.scTotalLoads} />
+        <KPICard label="Total Revenue" value={fmt(totals.revenue)} info={METRIC_INFO.scTotalRevenue} />
+        {!shareView && <KPICard label="Total Spend" value={fmt(totals.cost)} info={METRIC_INFO.scTotalSpend} />}
+        {!shareView && <KPICard label="Total Profit" value={fmt(totals.profit)} good={totals.profit > 0} info={METRIC_INFO.scTotalProfit} />}
+        {!shareView && <KPICard label="Avg Margin" value={pct(totals.margin)} good={totals.margin >= 15} info={METRIC_INFO.scAvgMargin} />}
+        <KPICard label="Active Lanes" value={totals.activeLanes.toString()} info={METRIC_INFO.scActiveLanes} />
       </div>
 
       {/* Filters */}
@@ -399,20 +401,14 @@ export default function CustomerScorecardView() {
   );
 }
 
-function ServiceMetricBadge({ label, value, thresholds }: { label: string; value: number | null; thresholds?: 'otp' | 'claims' }) {
-  if (value == null) return <MiniCard label={label} value="N/A" />;
-  let colorClass = '';
-  if (thresholds === 'otp') {
-    colorClass = value >= 95 ? 'text-green-600' : value >= 90 ? 'text-yellow-600' : 'text-red-600';
-  } else if (thresholds === 'claims') {
-    colorClass = value < 1 ? 'text-green-600' : value <= 3 ? 'text-yellow-600' : 'text-red-600';
-  }
-  return (
-    <div className="bg-card border border-border rounded-md px-3 py-2">
-      <div className="text-[10px] text-muted-foreground">{label}</div>
-      <div className={`text-sm font-bold font-mono ${colorClass}`}>{value.toFixed(1)}%</div>
-    </div>
-  );
+function ServiceMetricBadge({ label, value, thresholds, info }: { label: string; value: number | null; thresholds?: 'otp' | 'claims'; info?: MetricInfo }) {
+  if (value == null) return <MiniCard label={label} value="N/A" info={info} />;
+  const colorClass = thresholds === 'otp'
+    ? otpColor(value)
+    : thresholds === 'claims'
+      ? (value < 1 ? 'text-green-600' : value <= 3 ? 'text-yellow-600' : 'text-red-600')
+      : '';
+  return <MiniCard label={label} value={`${value.toFixed(1)}%`} valueClassName={colorClass} info={info} />;
 }
 
 function ServicePerformanceSection({ c }: { c: CustomerRow }) {
@@ -422,9 +418,9 @@ function ServicePerformanceSection({ c }: { c: CustomerRow }) {
     <>
       <div className="text-xs font-semibold text-muted-foreground">Service Performance</div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <ServiceMetricBadge label="On-Time Pickup" value={c.otpPct} thresholds="otp" />
-        <ServiceMetricBadge label="True On-Time Delivery" value={c.otdPct} thresholds="otp" />
-        <ServiceMetricBadge label="Raw On-Time Delivery" value={otd.rawPct} thresholds="otp" />
+        <ServiceMetricBadge label="On-Time Pickup" value={c.otpPct} thresholds="otp" info={METRIC_INFO.onTimePickup} />
+        <ServiceMetricBadge label="True On-Time Delivery" value={c.otdPct} thresholds="otp" info={METRIC_INFO.otdFair} />
+        <ServiceMetricBadge label="Raw On-Time Delivery" value={otd.rawPct} thresholds="otp" info={METRIC_INFO.otdOriginal} />
         <MiniCard label="Pickup Changes" value={c.pickupChangesPct != null ? `${c.pickupChangesPct.toFixed(1)}%` : 'N/A'} />
       </div>
 
@@ -582,27 +578,6 @@ function ExpandedDetail({ c, handleLaneSort, laneSortKey, laneSortDir }: {
           </div>
         </>
       )}
-    </div>
-  );
-}
-
-/* ── Small components ── */
-function KPICard({ label, value, good, emphasis }: { label: string; value: string; good?: boolean; emphasis?: boolean }) {
-  return (
-    <Card>
-      <CardContent className="p-4">
-        <div className="text-xs text-muted-foreground">{label}</div>
-        <div className={`text-xl font-bold font-mono mt-1 ${good === true ? 'text-success' : good === false ? 'text-destructive' : ''} ${emphasis ? 'text-primary' : ''}`}>{value}</div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function MiniCard({ label, value, good, emphasis }: { label: string; value: string; good?: boolean; emphasis?: boolean }) {
-  return (
-    <div className="bg-card border border-border rounded-md px-3 py-2">
-      <div className="text-[10px] text-muted-foreground">{label}</div>
-      <div className={`text-sm font-bold font-mono ${good === true ? 'text-success' : good === false ? 'text-destructive' : ''} ${emphasis ? 'text-primary' : ''}`}>{value}</div>
     </div>
   );
 }

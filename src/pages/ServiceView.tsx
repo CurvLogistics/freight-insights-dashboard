@@ -9,6 +9,7 @@ import LoadListDrawer from '@/components/LoadListDrawer';
 import { isScored } from '@/lib/computeLoads';
 import { summarizeOtd, deliveryStatus, OTD_BASIS_LABEL, DELAY_FAULT_LABEL, type OtdBasis } from '@/lib/delayReasons';
 import { formatUSDateTime } from '@/lib/dates';
+import { METRIC_INFO, type MetricInfo } from '@/lib/metricInfo';
 
 type StatusFilter = 'all' | 'on-time' | 'late' | 'hidden' | 'customer' | 'shipper' | 'excluded' | 'on-time-pickup' | 'late-pickup' | 'unknown';
 type GroupBy = 'broker' | 'team' | 'customer' | 'carrier';
@@ -133,13 +134,13 @@ export default function ServiceView() {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
-        <MetricCard label="Total Shipments" value={kpi.total.toLocaleString('en-US')} sub="In current filters" tone="neutral" onClick={() => openList('all')} />
-        <MetricCard label="On-Time Pickup" value={fmtPct(kpi.puPct)} sub={`${kpi.puLate} late pickups`} tone={kpi.puPct != null && kpi.puPct >= 90 ? 'good' : 'warn'} onClick={() => openList('on-time-pickup')} secondary={{ label: `${kpi.puLate} late`, onClick: () => openList('late-pickup') }} />
-        <MetricCard label={basis === 'original' ? 'On-Time vs Original Appt' : 'True On-Time Delivery'} value={fmtPct(kpi.delPct)} sub={`${basis === 'original' ? `Fair ${fmtPct(kpi.fairPct)}` : `Original appt ${fmtPct(kpi.rawPct)}`}${kpi.turvoPct != null ? ` · Turvo ${fmtPct(kpi.turvoPct)}` : ''}`} tone={'good'} />
-        <MetricCard label="Late Shipments" value={kpi.late.toString()} sub="Late at delivery" tone={kpi.late === 0 ? 'good' : 'bad'} onClick={() => openList('late')} />
-        <MetricCard label="Hidden Late" value={kpi.hidden.toString()} sub="On time in Turvo, date moved" tone={kpi.hidden === 0 ? 'good' : 'bad'} onClick={() => openList('hidden')} />
-        <MetricCard label="Rescheduled (Cust/Shipper)" value={kpi.excluded.toString()} sub={`${kpi.customer} customer · ${kpi.shipper} shipper · ${basis === 'fair' ? 'not in on-time %' : 'scored in this view'}`} tone="neutral" onClick={() => openList('excluded')} />
-        <MetricCard label="Can't Score" value={kpi.unknown.toString()} sub="Missing arrival time" tone={kpi.unknown === 0 ? 'good' : 'warn'} onClick={() => openList('unknown')} />
+        <MetricCard label="Total Shipments" value={kpi.total.toLocaleString('en-US')} sub="In current filters" tone="neutral" info={METRIC_INFO.totalShipments} onClick={() => openList('all')} />
+        <MetricCard label="On-Time Pickup" value={fmtPct(kpi.puPct)} sub={`${kpi.puLate} late pickups`} tone={kpi.puPct != null && kpi.puPct >= 90 ? 'good' : 'warn'} info={METRIC_INFO.onTimePickup} onClick={() => openList('on-time-pickup')} secondary={{ label: `${kpi.puLate} late`, onClick: () => openList('late-pickup') }} />
+        <MetricCard label={basis === 'original' ? 'On-Time vs Original Appt' : 'True On-Time Delivery'} value={fmtPct(kpi.delPct)} sub={`${basis === 'original' ? `Fair ${fmtPct(kpi.fairPct)}` : `Original appt ${fmtPct(kpi.rawPct)}`}${kpi.turvoPct != null ? ` · Turvo ${fmtPct(kpi.turvoPct)}` : ''}`} tone={'good'} info={basis === 'original' ? METRIC_INFO.otdOriginal : METRIC_INFO.otdFair} />
+        <MetricCard label="Late Shipments" value={kpi.late.toString()} sub="Late at delivery" tone={kpi.late === 0 ? 'good' : 'bad'} info={METRIC_INFO.lateShipments} onClick={() => openList('late')} />
+        <MetricCard label="Hidden Late" value={kpi.hidden.toString()} sub="On time in Turvo, date moved" tone={kpi.hidden === 0 ? 'good' : 'bad'} info={METRIC_INFO.hiddenLate} onClick={() => openList('hidden')} />
+        <MetricCard label="Rescheduled (Cust/Shipper)" value={kpi.excluded.toString()} sub={`${kpi.customer} customer · ${kpi.shipper} shipper · ${basis === 'fair' ? 'not in on-time %' : 'scored in this view'}`} tone="neutral" info={METRIC_INFO.rescheduled} onClick={() => openList('excluded')} />
+        <MetricCard label="Can't Score" value={kpi.unknown.toString()} sub="Missing arrival time" tone={kpi.unknown === 0 ? 'good' : 'warn'} info={METRIC_INFO.cantScore} onClick={() => openList('unknown')} />
       </div>
 
       <Card>
@@ -279,8 +280,10 @@ function Chips({ options, value, onChange }: { options: { key: string; label: st
   );
 }
 
-function MetricCard({ label, value, sub, tone, onClick, secondary }: {
-  label: string; value: string; sub: string; tone: 'good' | 'warn' | 'bad' | 'neutral';
+function MetricCard({ label, value, sub, tone, onClick, secondary, info }: {
+label: string; value: string; sub: string; tone: 'good' | 'warn' | 'bad' | 'neutral';
+/** Shows an "i" icon next to the label explaining the metric and its data source. */
+info?: MetricInfo;
   onClick?: () => void;
   /** Optional second link inside the card, e.g. "12 late" on an on-time card. */
   secondary?: { label: string; onClick: () => void };
@@ -289,7 +292,10 @@ function MetricCard({ label, value, sub, tone, onClick, secondary }: {
   return (
     <Card className={onClick ? 'cursor-pointer hover:border-primary/50 transition-colors' : ''} onClick={onClick}>
       <CardContent className="p-4 text-center">
-        <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wide">{label}</p>
+        <div className="text-[11px] text-muted-foreground font-medium uppercase tracking-wide flex items-center justify-center gap-1">
+          {label}
+          {info && <InfoTip text={info.text} source={info.source} />}
+        </div>
         <p className={`text-2xl font-bold mt-1.5 font-mono ${color}`}>{value}</p>
         <p className="text-[11px] text-muted-foreground mt-1">{sub}</p>
         {secondary && (

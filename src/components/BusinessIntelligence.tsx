@@ -8,6 +8,8 @@ import { laneOf } from '@/lib/computeLoads';
 import { aggregate, groupBy, daysInRange, minRankLoads, businessToday } from '@/lib/filters';
 import { formatUSDate } from '@/lib/dates';
 import { buildLaneVolatility, FLOOR_TARGET, STRETCH_TARGET } from '@/lib/laneVolatility';
+import InfoTip from '@/components/InfoTip';
+import { METRIC_INFO } from '@/lib/metricInfo';
 
 const fmt = (n: number) => `$${Math.round(n).toLocaleString('en-US')}`;
 const pct = (n: number) => `${n.toFixed(1)}%`;
@@ -188,11 +190,11 @@ export default function BusinessIntelligence(props: BusinessIntelligenceProps = 
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-4">
-            <HealthMetric label="Loads" current={cur.loads.toString()} delta={hasPrev ? data.loadsDelta : null} isCount />
-            <HealthMetric label="Revenue" current={fmtCompact(cur.revenue)} delta={hasPrev ? data.revDelta : null} />
-            <HealthMetric label="Profit" current={fmtCompact(cur.profit)} delta={hasPrev ? data.profitDelta : null} />
-            <HealthMetric label="Margin %" current={pct(cur.margin)} delta={hasPrev ? { abs: data.marginDelta.abs, pct: 0, label: '' } : null} isMargin />
-            <HealthMetric label="Avg Carrier Cost" current={fmt(cur.avgCost)} delta={hasPrev ? data.costDelta : null} invertColor />
+            <HealthMetric label="Loads" info={METRIC_INFO.healthLoads} current={cur.loads.toString()} delta={hasPrev ? data.loadsDelta : null} isCount />
+            <HealthMetric label="Revenue" info={METRIC_INFO.healthRevenue} current={fmtCompact(cur.revenue)} delta={hasPrev ? data.revDelta : null} />
+            <HealthMetric label="Profit" info={METRIC_INFO.healthProfit} current={fmtCompact(cur.profit)} delta={hasPrev ? data.profitDelta : null} />
+            <HealthMetric label="Margin %" info={METRIC_INFO.healthMargin} current={pct(cur.margin)} delta={hasPrev ? { abs: data.marginDelta.abs, pct: 0, label: '' } : null} isMargin />
+            <HealthMetric label="Avg Carrier Cost" info={METRIC_INFO.healthAvgCost} current={fmt(cur.avgCost)} delta={hasPrev ? data.costDelta : null} invertColor />
           </div>
           {interpretations.length > 0 && (
             <div className="bg-muted/50 rounded-lg p-3 space-y-1">
@@ -211,6 +213,7 @@ export default function BusinessIntelligence(props: BusinessIntelligenceProps = 
             <CardTitle className="text-sm font-medium flex items-center gap-2">
               <TrendingDown className="w-4 h-4 text-destructive" />
               Carrier Cost Movement
+              <InfoTip text={METRIC_INFO.carrierCostMovement.text} source={METRIC_INFO.carrierCostMovement.source} />
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
@@ -414,8 +417,9 @@ export default function BusinessIntelligence(props: BusinessIntelligenceProps = 
   );
 }
 
-function HealthMetric({ label, current, delta: d, isCount, isMargin, invertColor }: {
+function HealthMetric({ label, current, delta: d, isCount, isMargin, invertColor, info }: {
   label: string;
+  info?: { text: string; source: string };
   current: string;
   delta: { abs: number; pct: number; label: string } | null;
   isCount?: boolean;
@@ -442,7 +446,10 @@ function HealthMetric({ label, current, delta: d, isCount, isMargin, invertColor
   }
   return (
     <div className="text-center">
-      <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">{label}</p>
+      <div className="text-xs text-muted-foreground font-medium uppercase tracking-wide flex items-center justify-center gap-1">
+        {label}
+        {info && <InfoTip text={info.text} source={info.source} />}
+      </div>
       <p className="text-xl font-bold font-mono mt-0.5">{current}</p>
       {changeEl}
     </div>
