@@ -15,6 +15,7 @@ import { laneCompareRanges } from '@/lib/laneComparison';
 import { normalizeCityNames } from '@/lib/cityNames';
 import { worstCarrierOn } from '@/components/BusinessIntelligence';
 import { deliveryStatus } from '@/lib/delayReasons';
+import { brokerPeriodComparison } from '@/lib/brokerPeriodComparison';
 
 const rescheduled = (extra: Partial<Load>): Load => ({
   loadId: 'T-1', serviceSource: 'turvo', shipmentStatus: 'Delivered',
@@ -362,5 +363,40 @@ describe('Katzman report: business-time snapshot label', () => {
   it('shows a Monday 7:45 AM ET snapshot in New York time', async () => {
     const { formatBusinessDateTime } = await import('@/lib/dates');
     expect(formatBusinessDateTime('2026-11-09T12:45:00Z')).toMatch(/11\/09\/2026, 7:45 AM EST/);
+  });
+});
+
+describe('Productivity period comparison', () => {
+  const f: Filters = { ...baseFilters, owner: 'Someone Else' };
+  const raw: Load[] = [
+    mk('C1', { broker: 'Ana', customerName: 'Acme', pickupDate: '2026-10-20', revenue: 2000, carrierCost: 1500 }),
+    mk('C2', { broker: 'Ana', customerName: 'Fresh Co', pickupDate: '2026-10-25' }),
+    mk('P1', { broker: 'Ana', customerName: 'Acme', pickupDate: '2026-09-10' }),
+    mk('P2', { broker: 'Ana', customerName: 'Gone Inc', pickupDate: '2026-09-12' }),
+    mk('X1', { broker: 'Ben', customerName: 'Acme', pickupDate: '2026-10-20' }),
+    mk('OLD', { broker: 'Ana', customerName: 'Acme', pickupDate: '2026-08-15' }),
+  ];
+
+  it('compares rolling 30 days with the previous 30, per customer, ignoring the broker filter', () => {
+    const c = brokerPeriodComparison(raw, f, 'booked', 'Ana', 'rolling30', '2026-11-04');
+    expect(c.current).toEqual({ start: '2026-10-06', end: '2026-11-04' });
+    expect(c.previous).toEqual({ start: '2026-09-06', end: '2026-10-05' });
+    expect(c.covered).toBe(true);
+    expect(c.cur.loads).toBe(2);
+    expect(c.prev.loads).toBe(2);
+    const byName = Object.fromEntries(c.customers.map(r => [r.name, r]));
+    expect(byName['Acme'].status).toBe('both');
+    expect(byName['Acme'].cur.revenue).toBe(2000);
+    expect(byName['Fresh Co'].status).toBe('new');
+    expect(byName['Gone Inc'].status).toBe('lost');
+  });
+
+  it('flags YTD vs last year as not covered when history is missing', () => {
+    const c = brokerPeriodComparison(raw, f, 'booked', 'Ana', 'ytd', '2026-11-04');
+    expect(c.current).toEqual({ start: '2026-01-01', end: '2026-11-04' });
+    expect(c.covered).toBe(false);
+    expect(c.reason).toMatch(/historical/i);
+    expect(c.prev.loads).toBe(0);
+    expect(c.dataStart).toBe('2026-08-15');
   });
 });

@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react';
 import { useData } from '@/context/DataContext';
 import { Card, CardContent } from '@/components/ui/card';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import BrokerPeriodComparison from '@/components/BrokerPeriodComparison';
 import InfoTip from '@/components/InfoTip';
 import { DataTrustBadge } from '@/components/DataTrust';
 import { brokerDrilldown, type DrillRow } from '@/lib/brokerDrilldown';
@@ -73,23 +75,43 @@ export default function ProductivityView() {
         <SheetContent side="right" className="w-full sm:max-w-3xl overflow-y-auto">
           <SheetHeader>
             <SheetTitle>{selected}</SheetTitle>
-            <SheetDescription>Top lanes and customers by volume for the current filters.</SheetDescription>
+            <SheetDescription>Performance for the selected range, and how it compares with earlier periods.</SheetDescription>
           </SheetHeader>
 
-          {summary && (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
-              <Stat label="Loads" value={summary.loads.toLocaleString('en-US')} />
-              <Stat label="Revenue" value={fmt(summary.revenue)} />
-              <Stat label="Gross Profit" value={fmt(summary.profit)} />
-              <Stat label="Margin" value={`${summary.margin.toFixed(1)}%`} cls={marginCls(summary.margin)} />
-            </div>
-          )}
+          {selected && (
+            // key resets the tab to "Selected range" when you open a different person
+            <Tabs key={selected} defaultValue="range" className="mt-4">
+              <TabsList>
+                <TabsTrigger value="range">Selected range</TabsTrigger>
+                <TabsTrigger value="rolling30">Last 30 days</TabsTrigger>
+                <TabsTrigger value="ytd">Year to date</TabsTrigger>
+              </TabsList>
 
-          {drill && (
-            <div className="space-y-6 mt-6">
-              <DrillTable title="Top Lanes" nameLabel="Lane" rows={drill.lanes} showAverages />
-              <DrillTable title="Top Customers" nameLabel="Customer" rows={drill.customers} />
-            </div>
+              <TabsContent value="range" className="mt-4">
+                {summary && (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <Stat label="Loads" value={summary.loads.toLocaleString('en-US')} />
+                    <Stat label="Revenue" value={fmt(summary.revenue)} />
+                    <Stat label="Gross Profit" value={fmt(summary.profit)} />
+                    <Stat label="Margin" value={`${summary.margin.toFixed(1)}%`} cls={marginCls(summary.margin)} />
+                  </div>
+                )}
+                {drill && (
+                  <div className="space-y-6 mt-6">
+                    <DrillTable title="Top Lanes" nameLabel="Lane" rows={drill.lanes} showAverages />
+                    <DrillTable title="Top Customers" nameLabel="Customer" rows={drill.customers} />
+                  </div>
+                )}
+              </TabsContent>
+
+              <TabsContent value="rolling30" className="mt-4">
+                <BrokerPeriodComparison broker={selected} kind="rolling30" />
+              </TabsContent>
+
+              <TabsContent value="ytd" className="mt-4">
+                <BrokerPeriodComparison broker={selected} kind="ytd" />
+              </TabsContent>
+            </Tabs>
           )}
         </SheetContent>
       </Sheet>
