@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
+import { ChevronRight } from 'lucide-react';
 import { useData } from '@/context/DataContext';
 import { Card, CardContent } from '@/components/ui/card';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -6,7 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import BrokerPeriodComparison from '@/components/BrokerPeriodComparison';
 import InfoTip from '@/components/InfoTip';
 import { DataTrustBadge } from '@/components/DataTrust';
-import { brokerDrilldown, type DrillRow } from '@/lib/brokerDrilldown';
+import { brokerDrilldown, MIN_LANE_LOADS, type DrillRow, type StateRow } from '@/lib/brokerDrilldown';
 import { aggregate, groupBy, ownerOf } from '@/lib/filters';
 
 const fmt = (n?: number) => n != null ? `$${Math.round(n).toLocaleString('en-US')}` : '—';
@@ -112,7 +113,14 @@ export default function ProductivityView() {
                 )}
                 {drill && (
                   <div className="space-y-6 mt-6">
-                    <DrillTable title="Top Lanes" nameLabel="Lane" rows={drill.lanes} showAverages />
+                    <DrillTable
+                      title={`Lanes with more than ${MIN_LANE_LOADS} loads`}
+                      nameLabel="Lane"
+                      rows={drill.lanes}
+                      showAverages
+                      empty={`No lane has more than ${MIN_LANE_LOADS} loads in this range — see destinations by state below.`}
+                    />
+                    <StateTable rows={drill.states} />
                     <DrillTable title="Top Customers" nameLabel="Customer" rows={drill.customers} />
                   </div>
                 )}
@@ -142,7 +150,9 @@ function Stat({ label, value, cls = '' }: { label: string; value: string; cls?: 
   );
 }
 
-function DrillTable({ title, nameLabel, rows, showAverages }: { title: string; nameLabel: string; rows: DrillRow[]; showAverages?: boolean }) {
+function DrillTable({ title, nameLabel, rows, showAverages, empty = 'No loads in this period' }: {
+  title: string; nameLabel: string; rows: DrillRow[]; showAverages?: boolean; empty?: string;
+}) {
   return (
     <div>
       <h4 className="text-sm font-semibold mb-2">{title}</h4>
@@ -159,7 +169,7 @@ function DrillTable({ title, nameLabel, rows, showAverages }: { title: string; n
           </tr></thead>
           <tbody>
             {rows.length === 0 && (
-              <tr><td colSpan={showAverages ? 7 : 5} className="text-center text-muted-foreground py-6">No loads in this period</td></tr>
+              <tr><td colSpan={showAverages ? 7 : 5} className="text-center text-muted-foreground py-6">{empty}</td></tr>
             )}
             {rows.map(r => (
               <tr key={r.name} className="border-b border-border/50 even:bg-muted/15">
@@ -175,6 +185,65 @@ function DrillTable({ title, nameLabel, rows, showAverages }: { title: string; n
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+/** Destinations grouped by state. Click a state to see every lane into it, including the small ones. */
+function StateTable({ rows }: { rows: StateRow[] }) {
+  const [open, setOpen] = useState<string | null>(null);
+  return (
+    <div>
+      <h4 className="text-sm font-semibold mb-2">Top Destinations by State</h4>
+      <div className="overflow-x-auto rounded-lg border">
+        <table className="w-full text-xs">
+          <thead><tr className="text-muted-foreground border-b bg-muted/30">
+            <th className="text-left px-3 py-2">Destination state</th>
+            <th className="text-right px-3 py-2">Lanes</th>
+            <th className="text-right px-3 py-2">Loads</th>
+            <th className="text-right px-3 py-2">Revenue</th>
+            <th className="text-right px-3 py-2">Gross Profit</th>
+            <th className="text-right px-3 py-2">Margin</th>
+          </tr></thead>
+          <tbody>
+            {rows.length === 0 && (
+              <tr><td colSpan={6} className="text-center text-muted-foreground py-6">No loads in this period</td></tr>
+            )}
+            {rows.map(s => (
+              <Fragment key={s.name}>
+                <tr
+                  className="border-b border-border/50 even:bg-muted/15 cursor-pointer hover:bg-muted/40"
+                  onClick={() => setOpen(open === s.name ? null : s.name)}
+                  aria-expanded={open === s.name}
+                >
+                  <td className="px-3 py-2 font-medium">
+                    <span className="inline-flex items-center gap-1">
+                      <ChevronRight className={`w-3.5 h-3.5 text-muted-foreground transition-transform ${open === s.name ? 'rotate-90' : ''}`} />
+                      {s.name}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 text-right font-mono">{s.lanes.length}</td>
+                  <td className="px-3 py-2 text-right font-mono">{s.loads}</td>
+                  <td className="px-3 py-2 text-right font-mono">{fmt(s.revenue)}</td>
+                  <td className="px-3 py-2 text-right font-mono">{fmt(s.profit)}</td>
+                  <td className={`px-3 py-2 text-right font-mono font-medium ${marginCls(s.margin)}`}>{s.margin.toFixed(1)}%</td>
+                </tr>
+                {open === s.name && s.lanes.map(l => (
+                  <tr key={`${s.name}-${l.name}`} className="border-b border-border/50 bg-muted/25 text-muted-foreground">
+                    <td className="pl-8 pr-3 py-1.5 max-w-[260px] truncate" title={l.name}>{l.name}</td>
+                    <td />
+                    <td className="px-3 py-1.5 text-right font-mono">{l.loads}</td>
+                    <td className="px-3 py-1.5 text-right font-mono">{fmt(l.revenue)}</td>
+                    <td className="px-3 py-1.5 text-right font-mono">{fmt(l.profit)}</td>
+                    <td className="px-3 py-1.5 text-right font-mono">{l.margin.toFixed(1)}%</td>
+                  </tr>
+                ))}
+              </Fragment>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-xs text-muted-foreground mt-2">Click a state to see every lane into it, including lanes with {MIN_LANE_LOADS} or fewer loads.</p>
     </div>
   );
 }

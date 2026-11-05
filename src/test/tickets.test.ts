@@ -119,8 +119,21 @@ describe('Productivity drill-down', () => {
   it('ranks the operator\'s own lanes and customers by volume', () => {
     const d = brokerDrilldown(loads, 'Ana');
     expect(d.loads).toHaveLength(3);
-    expect(d.lanes[0]).toMatchObject({ name: 'Miami, FL → Atlanta, GA', loads: 2, revenue: 2200, profit: 300 });
+    // Lanes are only listed with more than 5 loads; smaller ones still show under their state
+    expect(d.lanes).toHaveLength(0);
+    expect(d.states).toHaveLength(1);
+    expect(d.states[0]).toMatchObject({ name: 'GA', loads: 3, revenue: 4200, profit: 800 });
+    expect(d.states[0].lanes[0]).toMatchObject({ name: 'Miami, FL → Atlanta, GA', loads: 2, revenue: 2200, profit: 300 });
     expect(d.customers.map(c => [c.name, c.loads])).toEqual([['Acme', 2], ['Beta', 1]]);
+  });
+
+  it('lists every lane with more than 5 loads, with no top-10 cap', () => {
+    const many = Array.from({ length: 12 }, (_, lane) =>
+      Array.from({ length: 6 }, (_, i) => mk(`${lane}-${i}`, 'Ana', `City${lane}`, 'Acme', 1000, 800))).flat();
+    const small = mk('s1', 'Ana', 'Tiny', 'Acme', 1000, 800);
+    const d = brokerDrilldown([...many, small], 'Ana');
+    expect(d.lanes).toHaveLength(12);
+    expect(d.states[0].lanes).toHaveLength(13);
   });
 });
 
