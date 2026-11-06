@@ -2,7 +2,8 @@ import { useState, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { ArrowUpDown, ArrowUp, ArrowDown, Search, X, AlertTriangle, TrendingDown, UserMinus } from 'lucide-react';
+import { ArrowUpDown, ArrowUp, ArrowDown, Search, X, AlertTriangle, TrendingDown, UserMinus, Download } from 'lucide-react';
+import { downloadCsv } from '@/lib/csv';
 
 const fmt = (n: number) => `$${Math.round(n).toLocaleString('en-US')}`;
 const pct = (n: number) => `${n.toFixed(1)}%`;
@@ -36,6 +37,10 @@ interface Props {
   maxRows?: number;
   onRowClick?: (name: string) => void;
   selectedRow?: string | null;
+  /** Header for the first column in the CSV export, e.g. "Lane" or "Broker". */
+  nameLabel?: string;
+  /** Prefix for the export file name, e.g. "Lane Comparison" (the title is added after it). */
+  exportName?: string;
 }
 
 function deltaColor(v: number) {
@@ -66,7 +71,7 @@ const sectionColors = {
 };
 const sectionIcons = { lost: UserMinus, declining: TrendingDown, growing: ArrowUp };
 
-export default function ComparisonRankTable({ title, data, maxRows = 50, onRowClick, selectedRow }: Props) {
+export default function ComparisonRankTable({ title, data, maxRows = 50, onRowClick, selectedRow, nameLabel = 'Name', exportName }: Props) {
   const [sortKey, setSortKey] = useState<SortKey>('profitDelta');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [nameFilter, setNameFilter] = useState('');
@@ -106,7 +111,8 @@ export default function ComparisonRankTable({ title, data, maxRows = 50, onRowCl
     growingCount: filtered.filter(r => r.section === 'growing').length,
   }), [filtered]);
 
-  const sorted = useMemo(() => {
+  // All rows in the current sort; the table shows the first maxRows, the export gets every row.
+  const ordered = useMemo(() => {
     const mult = sortKey === 'profitDelta' && sortDir === 'asc' ? 1 : (sortDir === 'asc' ? 1 : -1);
     return [...filtered].sort((a, b) => {
       // Primary: section order
@@ -115,8 +121,30 @@ export default function ComparisonRankTable({ title, data, maxRows = 50, onRowCl
       // Secondary: user-selected sort
       if (sortKey === 'name') return mult * a.name.localeCompare(b.name);
       return mult * ((a[sortKey] as number || 0) - (b[sortKey] as number || 0));
-    }).slice(0, maxRows);
-  }, [filtered, sortKey, sortDir, maxRows]);
+    });
+  }, [filtered, sortKey, sortDir]);
+  const sorted = useMemo(() => ordered.slice(0, maxRows), [ordered, maxRows]);
+
+  /** Exports what's on screen — same search, sort and sections — but every row, not just the first maxRows. */
+  const exportCsv = () => {
+    const round = (n: number) => Math.round(n);
+    const pp = (n: number | null) => (n == null ? '' : n.toFixed(1));
+    downloadCsv(exportName ? `${exportName} ${title}` : title, [
+      nameLabel, 'Status',
+      'Loads (current)', 'Loads (previous)', 'Loads change',
+      'Revenue (current)', 'Revenue (previous)', 'Revenue change',
+      'Profit (current)', 'Profit (previous)', 'Profit change',
+      'Margin % (current)', 'Margin % (previous)', 'Margin change (pp)',
+      'Flags',
+    ], ordered.map(r => [
+      r.name, sectionLabels[r.section],
+      r.loadsCur, r.loadsPrev, r.loadsDelta,
+      round(r.revenueCur), round(r.revenuePrev), round(r.revenueDelta),
+      round(r.profitCur), round(r.profitPrev), round(r.profitDelta),
+      r.loadsCur > 0 ? r.marginCur.toFixed(1) : '', r.loadsPrev > 0 ? r.marginPrev.toFixed(1) : '', pp(r.marginDelta),
+      r.flags.join('; '),
+    ]));
+  };
 
   const SortIcon = ({ col }: { col: SortKey }) => {
     if (sortKey !== col) return <ArrowUpDown className="w-3 h-3 opacity-30" />;
@@ -161,6 +189,14 @@ export default function ComparisonRankTable({ title, data, maxRows = 50, onRowCl
             )}
             <button onClick={() => setShowFilters(f => !f)} className={`p-1 rounded hover:bg-muted/50 ${showFilters ? 'bg-muted' : ''}`}>
               <Search className="w-3.5 h-3.5 text-muted-foreground" />
+            </button>
+            <button
+              onClick={exportCsv}
+              disabled={ordered.length === 0}
+              className="ml-1 inline-flex items-center gap-1 rounded border px-2 py-1 text-xs text-muted-foreground hover:bg-muted/50 hover:text-foreground disabled:opacity-50"
+              title="Download every row in the current sort and search as a CSV (opens in Excel)"
+            >
+              <Download className="w-3.5 h-3.5" /> Export CSV
             </button>
           </div>
         </div>

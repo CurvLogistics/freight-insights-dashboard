@@ -314,7 +314,7 @@ export default function DashboardView() {
       </div>
 
            {SHOW_BROKER_COMPARISON && hasPrev && (
-        <ComparisonRankTable title={`Broker Comparison (${compLabel})`} data={compBrokers} onRowClick={handleRowClick('broker')} selectedRow={dashFilter?.type === 'broker' ? dashFilter.value : null} />
+        <ComparisonRankTable title={`Broker Comparison (${compLabel})`} data={compBrokers} onRowClick={handleRowClick('broker')} selectedRow={dashFilter?.type === 'broker' ? dashFilter.value : null} nameLabel="Broker" />
       )}
 
       {/* Lane Comparison — its own two date ranges (RPT-09) */}
@@ -348,7 +348,8 @@ export default function DashboardView() {
         )}
         <ComparisonRankTable
           title={`${formatUSDate(laneRanges.a.start)} – ${formatUSDate(laneRanges.a.end)} vs ${formatUSDate(laneRanges.b.start)} – ${formatUSDate(laneRanges.b.end)}`}
-          data={compLanes} onRowClick={handleRowClick('lane')} selectedRow={dashFilter?.type === 'lane' ? dashFilter.value : null} />
+          data={compLanes} onRowClick={handleRowClick('lane')} selectedRow={dashFilter?.type === 'lane' ? dashFilter.value : null}
+          nameLabel="Lane" exportName="Lane Comparison" />
       </div>
 
       {/* One table per entity (RPT-12/13): Top-by-profit and Bottom-by-margin were the same rows

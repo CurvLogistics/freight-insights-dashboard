@@ -427,3 +427,13 @@ describe('check-in / check-out dwell time', () => {
     expect(longWaitAtReceiver({ deliveryArrival: '2026-11-02T11:00:00Z', deliveryDeparture: '2026-11-02T14:00:00Z' })).toBe(true);
   });
 });
+
+describe('CSV export', () => {
+  it('escapes quotes and commas, keeps "→", and makes a safe file name', async () => {
+    const { toCsv, csvFilename } = await import('@/lib/csv');
+    const csv = toCsv(['Lane', 'Loads'], [['Miami, FL → Bronx, NY', 3], ['Say "hi"', null]]);
+    expect(csv.startsWith('\ufeff')).toBe(true);
+    expect(csv.slice(1).split('\r\n')).toEqual(['"Lane","Loads"', '"Miami, FL → Bronx, NY","3"', '"Say ""hi""",""']);
+    expect(csvFilename('Lane Comparison 11/03/2026 – 11/09/2026')).toBe('lane-comparison-11-03-2026-11-09-2026.csv');
+  });
+});

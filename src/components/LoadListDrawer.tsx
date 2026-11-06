@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Download } from 'lucide-react';
 import type { Load } from '@/types/loads';
 import { formatUSDate } from '@/lib/dates';
+import { downloadCsv } from '@/lib/csv';
 import { laneOf } from '@/lib/computeLoads';
 import { isUncovered } from '@/lib/computeLoads';
 
@@ -55,17 +56,10 @@ export default function LoadListDrawer({
 
   const exportCsv = () => {
     const header = ['Load', 'Customer', 'Carrier', 'Broker', 'Lane', 'Pickup', 'Status', 'Revenue', 'Cost', ...extraColumns.map(c => c.label)];
-    const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-    const lines = rows.map(l => [
+    downloadCsv(title, header, rows.map(l => [
       l.loadId, l.customerName, l.carrierName, l.broker, lane(l), formatUSDate(l.pickupDate), l.shipmentStatus,
       l.revenue ?? '', l.carrierCost ?? '', ...extraColumns.map(c => (c.csv ? c.csv(l) : '')),
-    ].map(esc).join(','));
-    const blob = new Blob([[header.map(esc).join(','), ...lines].join('\n')], { type: 'text/csv' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `${title.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.csv`;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 0);
+    ]));
   };
 
   return (
