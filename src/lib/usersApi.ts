@@ -1,6 +1,8 @@
 import { authHeader, type GetSessionToken } from '@/lib/loadsRepository';
+import type { Role } from '@/auth/permissions';
 
-export type AssignableRole = 'none' | 'user' | 'management' | 'admin';
+/** 'none' = signed up but not given access yet. */
+export type AssignableRole = 'none' | Role;
 
 export interface DashboardUser {
   id: string;
@@ -19,14 +21,14 @@ export interface DashboardInvite {
   email: string;
   name: string;
   createdAt: number;
-  role: Exclude<AssignableRole, 'none'>;
+  role: Role;
   brokerName: string | null;
 }
 
 export interface NewUser {
   name: string;
   email: string;
-  role: Exclude<AssignableRole, 'none'>;
+  role: Role;
   brokerName: string | null;
 }
 

@@ -1,3 +1,5 @@
+import type { PageId } from '@/auth/permissions';
+
 import type { DelayFault, DelayFaultSource } from '@/lib/delayReasons';
 
 export type OnTimeStatus = 'On Time' | 'Late' | 'Excluded' | 'Unknown';
@@ -110,5 +112,6 @@ export interface DataQuality {
   missingCarrier: number;
 }
 
-export type ViewType = 'dashboard' | 'service' | 'lanes' | 'productivity' | 'exceptions' | 'customer-scorecard' | 'carrier-scorecard' | 'cash-flow' | 'insights' | 'settings';
+/** One per sidebar page; the list lives in src/auth/permissions.ts so each page has a permission. */
+export type ViewType = PageId;
 

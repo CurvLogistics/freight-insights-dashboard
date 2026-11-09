@@ -7,6 +7,7 @@ import { useAuth } from '@clerk/react';
 import { triggerSync, importHistoricalLoads } from '@/lib/loadsRepository';
 import { useRole } from '@/auth/useRole';
 import UsersRolesCard from '@/components/UsersRolesCard';
+import RolesPermissionsCard from '@/components/RolesPermissionsCard';
 import { parseCSV, isActiveLoad } from '@/lib/computeLoads';
 import { getDatasetBounds } from '@/lib/comparison';
 import { Loader2, AlertTriangle, RefreshCw, Download, Database, History, Upload } from 'lucide-react';
@@ -18,8 +19,8 @@ const sourceLabels = {
   none: 'No data yet',
 } as const;
 
-/** Sync and import change shared data, so only users with the Clerk "admin" role see them (the server checks it too). */
-function TurvoSyncCard({ isAdmin }: { isAdmin: boolean }) {
+/** Sync changes shared data, so only roles with sync.run see the buttons (the server checks it too). */
+function TurvoSyncCard({ canSync }: { canSync: boolean }) {
   const { getToken } = useAuth();
   const { dataSource, dataLoading, dataError, rawLoads, lastSyncedAt, refreshLoads } = useData();
   const [syncing, setSyncing] = useState(false);
@@ -53,7 +54,7 @@ function TurvoSyncCard({ isAdmin }: { isAdmin: boolean }) {
             </CardDescription>
           </div>
           <div className="flex gap-2 shrink-0">
-            {isAdmin && (
+            {canSync && (
               <>
                 <Button variant="outline" size="sm" onClick={() => void handleSync(180)} disabled={syncing} className="gap-1.5" title="Turvo's API maximum. Run once to backfill; the daily sync keeps it going.">
                   <History className="w-3.5 h-3.5" />
@@ -169,20 +170,21 @@ function HistoryImportCard() {
   );
 }
 
-/** Historical CSV import (admin only) — loads synced from the Turvo API always win over CSV rows with the same ID. */
+/** Historical CSV import (needs data.import) — loads synced from the Turvo API always win over CSV rows with the same ID. */
 const SHOW_CSV_IMPORT = true;
 
 const SettingsView = () => {
-  const { isAdmin } = useRole();
+  const { can } = useRole();
   return (
     <div className="p-6 space-y-6 max-w-4xl">
       <div>
         <h2 className="text-2xl font-bold">Settings</h2>
         <p className="text-sm text-muted-foreground">Manage integrations and data connections</p>
       </div>
-      <TurvoSyncCard isAdmin={isAdmin} />
-      {isAdmin && <UsersRolesCard />}
-      {SHOW_CSV_IMPORT && isAdmin && <HistoryImportCard />}
+      <TurvoSyncCard canSync={can('sync.run')} />
+      {can('users.manage') && <UsersRolesCard />}
+      {can('users.manage') && <RolesPermissionsCard />}
+      {SHOW_CSV_IMPORT && can('data.import') && <HistoryImportCard />}
     </div>
   );
 };

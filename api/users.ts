@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClerkClient } from '@clerk/backend';
-import { requireUser, requireRole, AuthError, AUTHORIZED_PARTIES, type Role } from './_lib/auth.js';
+import { requireUser, requirePermission, AuthError, AUTHORIZED_PARTIES, type Role } from './_lib/auth.js';
+import { canGrant } from '../src/auth/permissions.js';
 
 /** 'none' = signed up but not given access yet (no role and no broker, so they see no loads). */
 type AssignableRole = Role | 'none';
@@ -18,15 +19,18 @@ function appUrl(req: VercelRequest): string {
 }
 
 /**
- * Admin-only: list everyone who has signed up plus pending invites (GET), set a user's role /
+ * Needs users.manage: list everyone who has signed up plus pending invites (GET), set a user's role /
  * broker (POST), invite someone with a role already set (PUT) and remove a user or revoke an
  * invite (DELETE). People can still sign up themselves and wait for an admin to grant access.
+ * Only an Admin can give the Admin role or change / remove an existing Admin.
  */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const me = await requireUser(req);
-    requireRole(me, ['admin']);
+    requirePermission(me, 'users.manage');
     const clerk = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY! });
+    const isAdminUser = async (userId: string) =>
+      ((await clerk.users.getUser(userId)).publicMetadata as InviteMeta).role === 'admin';
 
     if (req.method === 'GET') {
       const [{ data }, { data: pending }] = await Promise.all([
@@ -67,8 +71,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!userId || !role || !ROLES.includes(role)) {
         return res.status(400).json({ error: 'userId and a valid role are required' });
       }
-      if (userId === me.userId && role !== 'admin') {
-        return res.status(400).json({ error: "You can't remove your own admin role" });
+      if (userId === me.userId) return res.status(400).json({ error: "You can't change your own role" });
+      if (!canGrant(me, role)) return res.status(403).json({ error: 'Only an Admin can give the Admin role' });
+      if (me.role !== 'admin' && await isAdminUser(userId)) {
+        return res.status(403).json({ error: "Only an Admin can change another Admin's role" });
       }
       const broker = brokerName?.trim() || null;
       if (role === 'user' && !broker) {
@@ -95,6 +101,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ error: 'Pick Broker, Management or Admin' });
       }
       if (body.role === 'user' && !broker) return res.status(400).json({ error: 'Pick a broker for this user' });
+      if (!canGrant(me, body.role)) return res.status(403).json({ error: 'Only an Admin can give the Admin role' });
 
       const existing = await clerk.users.getUserList({ emailAddress: [email], limit: 1 });
       if (existing.totalCount > 0) return res.status(409).json({ error: 'This email already has an account' });
@@ -123,6 +130,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const userId = typeof req.query.userId === 'string' ? req.query.userId : '';
       if (!userId) return res.status(400).json({ error: 'userId or invitationId is required' });
       if (userId === me.userId) return res.status(400).json({ error: "You can't remove your own account" });
+      if (me.role !== 'admin' && await isAdminUser(userId)) {
+        return res.status(403).json({ error: 'Only an Admin can remove an Admin' });
+      }
       // Deletes the Clerk account and ends their sessions; they'd have to sign up again
       await clerk.users.deleteUser(userId);
       return res.status(200).json({ ok: true });

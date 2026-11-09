@@ -1,10 +1,10 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { requireUser, requireRole, AuthError } from './_lib/auth.js';
+import { requireUser, requirePermission, AuthError } from './_lib/auth.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Use POST' });
   try {
-    requireRole(await requireUser(req), ['admin']);
+    requirePermission(await requireUser(req), 'sync.run');
   } catch (err) {
     if (err instanceof AuthError) return res.status(err.status).json({ error: err.message });
     throw err;

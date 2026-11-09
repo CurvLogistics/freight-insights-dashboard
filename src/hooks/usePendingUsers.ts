@@ -7,22 +7,23 @@ import { listUsers } from '@/lib/usersApi';
 export const PENDING_USERS_KEY = ['pending-users'] as const;
 
 /**
- * Admins only: how many people signed up and are still waiting for access (role "none").
+ * Users who can manage users only: how many people signed up and are still waiting for access (role "none").
  * Re-checks every 5 minutes and whenever the tab gets focus. Returns 0 for everyone else.
  */
 export function usePendingUsers(): number {
-    const { isAdmin, isLoaded } = useRole();
+    const { can, isLoaded } = useRole();
+    const canManage = can('users.manage');
     const { getToken } = useAuth();
 
     const { data } = useQuery({
         queryKey: PENDING_USERS_KEY,
         queryFn: async () => (await listUsers(getToken)).filter(u => u.role === 'none').length,
-        enabled: isLoaded && isAdmin,
+        enabled: isLoaded && canManage,
         refetchInterval: 5 * 60 * 1000,
         refetchOnWindowFocus: true,
         staleTime: 60 * 1000,
         retry: false,
     });
 
-    return isAdmin ? data ?? 0 : 0;
+    return canManage ? data ?? 0 : 0;
 }

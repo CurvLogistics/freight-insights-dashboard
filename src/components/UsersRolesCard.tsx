@@ -17,20 +17,17 @@ import {
   type AssignableRole, type DashboardInvite, type DashboardUser,
 } from '@/lib/usersApi';
 import CreateUserDialog from '@/components/CreateUserDialog';
+import { useRole } from '@/auth/useRole';
+import { ROLE_LABELS as SHARED_ROLE_LABELS, canGrant } from '@/auth/permissions';
 import { PENDING_USERS_KEY } from '@/hooks/usePendingUsers';
 
-const ROLE_LABELS: Record<AssignableRole, string> = {
-  none: 'No access',
-  user: 'Broker',
-  management: 'Management',
-  admin: 'Admin',
-};
+const ROLE_LABELS: Record<AssignableRole, string> = { none: 'No access', ...SHARED_ROLE_LABELS };
 
-const ROLE_HELP = 'Broker: only their own loads · Management: all loads + Ask Claude · Admin: everything + Sync and roles';
+const ROLE_HELP = 'What each role can see and do is in the Roles & permissions table below. Only an Admin can give or change the Admin role.';
 
 const fmtDate = (ms: number | null) => (ms ? new Date(ms).toLocaleDateString('en-US') : '—');
 
-/** Admin only. People sign up themselves or are invited here; this is where an admin grants access. */
+/** Needs users.manage. People sign up themselves or are invited here; this is where access is granted. */
 export default function UsersRolesCard() {
   const { getToken } = useAuth();
   const queryClient = useQueryClient();
@@ -124,6 +121,10 @@ export default function UsersRolesCard() {
 
 function UserRow({ user, brokers, onSaved }: { user: DashboardUser; brokers: string[]; onSaved: () => Promise<void> }) {
   const { getToken } = useAuth();
+  const { role: myRole } = useRole();
+  // Only an Admin can touch another Admin, or hand out Admin
+  const locked = user.isMe || (user.role === 'admin' && myRole !== 'admin');
+  const roleOptions = (Object.keys(ROLE_LABELS) as AssignableRole[]).filter(r => r === user.role || canGrant({ role: myRole }, r));
   const [role, setRole] = useState<AssignableRole>(user.role);
   const [broker, setBroker] = useState<string | null>(user.brokerName);
   const [saving, setSaving] = useState(false);
@@ -168,10 +169,10 @@ function UserRow({ user, brokers, onSaved }: { user: DashboardUser; brokers: str
       </TableCell>
       <TableCell className="text-xs text-muted-foreground">{fmtDate(user.createdAt)}</TableCell>
       <TableCell>
-        <Select value={role} onValueChange={v => setRole(v as AssignableRole)} disabled={user.isMe}>
+        <Select value={role} onValueChange={v => setRole(v as AssignableRole)} disabled={locked}>
           <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
           <SelectContent>
-            {(Object.keys(ROLE_LABELS) as AssignableRole[]).map(r => (
+            {roleOptions.map(r => (
               <SelectItem key={r} value={r} className="text-xs">{ROLE_LABELS[r]}</SelectItem>
             ))}
           </SelectContent>
@@ -179,7 +180,7 @@ function UserRow({ user, brokers, onSaved }: { user: DashboardUser; brokers: str
       </TableCell>
       <TableCell>
         {role === 'user' ? (
-          <Select value={broker ?? undefined} onValueChange={setBroker}>
+          <Select value={broker ?? undefined} onValueChange={setBroker} disabled={locked}>
             <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Pick their Turvo name" /></SelectTrigger>
             <SelectContent>
               {brokerOptions.map(b => <SelectItem key={b} value={b} className="text-xs">{b}</SelectItem>)}
@@ -195,7 +196,7 @@ function UserRow({ user, brokers, onSaved }: { user: DashboardUser; brokers: str
             {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Save'}
           </Button>
         )}
-        {!user.isMe && (
+        {!locked && (
           <AlertDialog>
             <AlertDialogTrigger asChild>
               <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive" disabled={saving} title="Remove user">

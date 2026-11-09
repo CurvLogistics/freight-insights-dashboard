@@ -30,7 +30,7 @@ const navItems: { id: ViewType; label: string; icon: React.ElementType }[] = [
 const SHOW_CSV_IMPORT = false;
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-  const { canSeeAll } = useRole();
+  const { can } = useRole();
   const pendingUsers = usePendingUsers();
   
   const {
@@ -98,7 +98,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         </div>
 
         <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-          {navItems.map(({ id, label, icon: Icon }) => (
+          {navItems.filter(({ id }) => can(`page.${id}`)).map(({ id, label, icon: Icon }) => (
             <button
               key={id}
               onClick={() => setCurrentView(id)}
@@ -272,7 +272,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       </main>
 
       {/* Admin + management only for now */}
-      {canSeeAll && <AskClaude />}
+      {can('askClaude') && <AskClaude />}
     </div>
   );
 }

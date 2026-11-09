@@ -10,20 +10,21 @@ import {
 } from '@/components/ui/dialog';
 import { Loader2, UserPlus } from 'lucide-react';
 import { createUser, type NewUser } from '@/lib/usersApi';
+import { useRole } from '@/auth/useRole';
+import { ROLE_LABELS, canGrant } from '@/auth/permissions';
 
 type InviteRole = NewUser['role'];
 
-const ROLE_OPTIONS: { value: InviteRole; label: string }[] = [
-  { value: 'user', label: 'Broker' },
-  { value: 'management', label: 'Management' },
-  { value: 'admin', label: 'Admin' },
-];
+/** Broker first: the most common invite. */
+const ROLE_ORDER: InviteRole[] = ['user', 'management', 'admin'];
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-/** Admin only: invites someone by email with their role (and broker) already set. */
+/** Needs users.manage: invites someone by email with their role (and broker) already set. */
 export default function CreateUserDialog({ brokers, onCreated }: { brokers: string[]; onCreated: () => Promise<void> }) {
   const { getToken } = useAuth();
+  const { role: myRole } = useRole();
+  const roleOptions = ROLE_ORDER.filter(r => canGrant({ role: myRole }, r));
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -91,7 +92,7 @@ export default function CreateUserDialog({ brokers, onCreated }: { brokers: stri
             <Select value={role ?? undefined} onValueChange={v => setRole(v as InviteRole)}>
               <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Pick a role" /></SelectTrigger>
               <SelectContent>
-                {ROLE_OPTIONS.map(r => <SelectItem key={r.value} value={r.value} className="text-sm">{r.label}</SelectItem>)}
+                {roleOptions.map(r => <SelectItem key={r} value={r} className="text-sm">{ROLE_LABELS[r]}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>

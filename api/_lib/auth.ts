@@ -1,7 +1,8 @@
 import type { VercelRequest } from '@vercel/node';
 import { createClerkClient, verifyToken } from '@clerk/backend';
+import { can, normalizeRole, type Permission, type Role } from '../../src/auth/permissions.js';
 
-export type Role = 'admin' | 'management' | 'user';
+export type { Role };
 
 export interface AuthUser {
   userId: string;
@@ -23,7 +24,7 @@ export const AUTHORIZED_PARTIES = [
   'http://localhost:8080', // vite dev
 ];
 
-type UserMeta = { role?: Role; brokerName?: string };
+type UserMeta = { role?: string; brokerName?: string };
 
 /**
  * Signed-in Clerk user for this request. The browser sends the session token as `X-Clerk-Session`
@@ -49,18 +50,19 @@ export async function requireUser(req: VercelRequest): Promise<AuthUser> {
   // {{user.public_metadata}}; otherwise looks the user up.
   const meta = ((payload as { metadata?: UserMeta }).metadata
     ?? (await createClerkClient({ secretKey }).users.getUser(payload.sub)).publicMetadata) as UserMeta;
-  const role: Role = meta.role ?? 'user';
+  const role = normalizeRole(meta.role);
 
   return {
     userId: payload.sub,
     role,
     brokerName: meta.brokerName,
-    canSeeAll: role === 'admin' || role === 'management',
+    canSeeAll: can(role, 'loads.all'),
   };
 }
 
-export function requireRole(user: AuthUser, allowed: Role[]) {
-  if (!allowed.includes(user.role)) {
+/** Checks the shared permission list (src/auth/permissions.ts). */
+export function requirePermission(user: AuthUser, permission: Permission) {
+  if (!can(user.role, permission)) {
     throw new AuthError(403, 'You do not have access to this');
   }
 }
