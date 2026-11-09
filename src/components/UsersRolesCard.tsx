@@ -10,9 +10,13 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-import { Loader2, RefreshCw, Trash2, Users } from 'lucide-react';
+import { Loader2, RefreshCw, Trash2, Users, X } from 'lucide-react';
 import { useData } from '@/context/DataContext';
-import { listUsers, setUserRole, removeUser, type AssignableRole, type DashboardUser } from '@/lib/usersApi';
+import {
+  listUsersAndInvites, setUserRole, removeUser, revokeInvite,
+  type AssignableRole, type DashboardInvite, type DashboardUser,
+} from '@/lib/usersApi';
+import CreateUserDialog from '@/components/CreateUserDialog';
 import { PENDING_USERS_KEY } from '@/hooks/usePendingUsers';
 
 const ROLE_LABELS: Record<AssignableRole, string> = {
@@ -26,12 +30,13 @@ const ROLE_HELP = 'Broker: only their own loads · Management: all loads + Ask C
 
 const fmtDate = (ms: number | null) => (ms ? new Date(ms).toLocaleDateString('en-US') : '—');
 
-/** Admin only. People sign up themselves; this is where an admin grants them access. */
+/** Admin only. People sign up themselves or are invited here; this is where an admin grants access. */
 export default function UsersRolesCard() {
   const { getToken } = useAuth();
   const queryClient = useQueryClient();
   const { rawLoads } = useData();
   const [users, setUsers] = useState<DashboardUser[] | null>(null);
+  const [invites, setInvites] = useState<DashboardInvite[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -45,8 +50,9 @@ export default function UsersRolesCard() {
     setLoading(true);
     setError(null);
     try {
-      const list = await listUsers(getToken);
+      const { users: list, invites: pending } = await listUsersAndInvites(getToken);
       setUsers(list);
+      setInvites(pending);
       // Keep the sidebar "waiting" badge in step with this card after a save or remove
       queryClient.setQueryData(PENDING_USERS_KEY, list.filter(u => u.role === 'none').length);
     } catch (err) {
@@ -71,14 +77,18 @@ export default function UsersRolesCard() {
               {waiting > 0 && <Badge variant="destructive">{waiting} waiting</Badge>}
             </CardTitle>
             <CardDescription>
-              People sign up with their work email, then appear here with no access until you give them a role.
+              Two ways in: people sign up with their work email and wait here with no access until you give them a role,
+              or you create them with Create user and they get an email invite with the role already set.
               Changes apply the next time they sign in or refresh.
             </CardDescription>
           </div>
-          <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading} className="gap-1.5 shrink-0">
-            {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-            Refresh
-          </Button>
+          <div className="flex items-center gap-2 shrink-0">
+            <CreateUserDialog brokers={brokers} onCreated={load} />
+            <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading} className="gap-1.5">
+              {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+              Refresh
+            </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-2">
@@ -96,6 +106,9 @@ export default function UsersRolesCard() {
                 </TableRow>
               </TableHeader>
               <TableBody>
+                {invites.map(i => (
+                  <InviteRow key={i.id} invite={i} onRevoked={load} />
+                ))}
                 {users.map(u => (
                   <UserRow key={u.id} user={u} brokers={brokers} onSaved={load} />
                 ))}
@@ -206,6 +219,64 @@ function UserRow({ user, brokers, onSaved }: { user: DashboardUser; brokers: str
             </AlertDialogContent>
           </AlertDialog>
         )}
+      </TableCell>
+    </TableRow>
+  );
+}
+
+/** Invited but hasn't signed up yet. The role is fixed by the invite; revoke and re-invite to change it. */
+function InviteRow({ invite, onRevoked }: { invite: DashboardInvite; onRevoked: () => Promise<void> }) {
+  const { getToken } = useAuth();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const revoke = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await revokeInvite(getToken, invite.id);
+      await onRevoked();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not revoke');
+      setBusy(false);
+    }
+  };
+
+  return (
+    <TableRow className="bg-muted/30">
+      <TableCell className="text-xs">
+        <div className="font-medium flex items-center gap-1.5">
+          {invite.email}
+          <Badge variant="outline" className="text-[10px] px-1.5 py-0">Invited</Badge>
+        </div>
+        {invite.name && <div className="text-muted-foreground">{invite.name}</div>}
+        {error && <div className="text-destructive mt-0.5">{error}</div>}
+      </TableCell>
+      <TableCell className="text-xs text-muted-foreground">Invited {fmtDate(invite.createdAt)}</TableCell>
+      <TableCell className="text-xs">{ROLE_LABELS[invite.role]}</TableCell>
+      <TableCell className="text-xs text-muted-foreground">{invite.role === 'user' ? invite.brokerName ?? '—' : 'All loads'}</TableCell>
+      <TableCell className="text-right whitespace-nowrap">
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive" disabled={busy} title="Revoke invite">
+              {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <X className="w-3.5 h-3.5" />}
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Revoke the invite for {invite.email}?</AlertDialogTitle>
+              <AlertDialogDescription>
+                The link in their email stops working. You can send a new invite later.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={() => void revoke()} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                Revoke invite
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </TableCell>
     </TableRow>
   );

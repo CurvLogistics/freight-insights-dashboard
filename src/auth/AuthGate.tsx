@@ -1,6 +1,12 @@
 import type { ReactNode } from 'react';
-import { Show, SignIn, UserButton } from '@clerk/react';
+import { Show, SignIn, SignUp, UserButton } from '@clerk/react';
 import { useRole } from './useRole';
+
+/** Opened from an admin's invite email: Clerk adds a ticket, and the account still has to be created. */
+function isInviteSignUp(): boolean {
+  const params = new URLSearchParams(window.location.search);
+  return !!params.get('__clerk_ticket') && params.get('__clerk_status') === 'sign_up';
+}
 
 export function AuthGate({ children }: { children: ReactNode }) {
   return (
@@ -19,7 +25,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
           <h1 style={{ fontSize: 22, fontWeight: 600, margin: 0 }}>
             FreightOps Insights
           </h1>
-          <SignIn routing="hash" />
+          {isInviteSignUp() ? <SignUp routing="hash" /> : <SignIn routing="hash" />}
         </div>
       </Show>
 

@@ -16,7 +16,8 @@ export class AuthError extends Error {
   }
 }
 
-const AUTHORIZED_PARTIES = [
+/** Origins allowed to call the API; also the only places an invite link may send someone back to. */
+export const AUTHORIZED_PARTIES = [
   'https://freight-insights-dashboard.vercel.app',
   'http://localhost:3000', // vercel dev
   'http://localhost:8080', // vite dev
