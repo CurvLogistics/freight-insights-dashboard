@@ -5,8 +5,7 @@ import { Download } from 'lucide-react';
 import type { Load } from '@/types/loads';
 import { formatUSDate } from '@/lib/dates';
 import { downloadCsv } from '@/lib/csv';
-import { laneOf } from '@/lib/computeLoads';
-import { isUncovered } from '@/lib/computeLoads';
+import { laneOf, isUncovered, isMissingRevenue } from '@/lib/computeLoads';
 
 const money = (n?: number) => (n != null ? `$${Math.round(n).toLocaleString('en-US')}` : '—');
 
@@ -124,8 +123,8 @@ export default function LoadListDrawer({
                       <td className="py-2 pr-2 whitespace-nowrap">{lane(l)}</td>
                       <td className="py-2 pr-2 text-xs whitespace-nowrap">{formatUSDate(l.pickupDate)}</td>
                       <td className="py-2 pr-2"><Badge variant="secondary" className="text-[10px] whitespace-nowrap">{l.shipmentStatus || '—'}</Badge></td>
-                      <td className={`py-2 pr-2 text-right font-mono text-xs ${highlightMissingFinancials && l.revenue == null ? 'text-destructive font-semibold' : ''}`}>
-                        {highlightMissingFinancials && l.revenue == null ? 'missing' : money(l.revenue)}
+                      <td className={`py-2 pr-2 text-right font-mono text-xs ${highlightMissingFinancials && isMissingRevenue(l) ? 'text-destructive font-semibold' : ''}`}>
+                        {highlightMissingFinancials && isMissingRevenue(l) ? 'missing' : money(l.revenue)}
                       </td>
                       <td className={`py-2 pr-2 text-right font-mono text-xs ${highlightMissingFinancials && l.carrierCost == null ? 'text-destructive font-semibold' : ''}`}>
                         {highlightMissingFinancials && l.carrierCost == null ? 'missing' : isUncovered(l) ? <span className="text-amber-600" title="No carrier assigned — cost pending, excluded from profit and margin">pending</span> : money(l.carrierCost)}                      </td>

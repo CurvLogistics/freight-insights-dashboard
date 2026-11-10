@@ -8,6 +8,7 @@ import { brokerDrilldown } from '@/lib/brokerDrilldown';
 import { summarizeCarriers, mostRecentCarrier } from '@/lib/laneCarriers';
 import { parseDelayReason, summarizeOtd } from '@/lib/delayReasons';
 import { matchesFilters, selectExceptionLoads, type Filters } from '@/lib/filters';
+import { scoredOf, lowCoverage } from '@/lib/scoredCounts';
 import { toBusinessDate } from '@/lib/dates';
 import { selectLoads, shipDate, matchesFocus, minRankLoads, ownerOf, aggregate, groupBy, businessToday, businessTodayDate, addDays } from '@/lib/filters';
 import { laneOf } from '@/lib/computeLoads';
@@ -435,5 +436,28 @@ describe('CSV export', () => {
     expect(csv.startsWith('\ufeff')).toBe(true);
     expect(csv.slice(1).split('\r\n')).toEqual(['"Lane","Loads"', '"Miami, FL → Bronx, NY","3"', '"Say ""hi""",""']);
     expect(csvFilename('Lane Comparison 11/03/2026 – 11/09/2026')).toBe('lane-comparison-11-03-2026-11-09-2026.csv');
+  });
+});
+
+describe('QA: on-time % shows how many shipments were scored', () => {
+  it('labels the scored count', () => {
+    expect(scoredOf(13, 45)).toBe('13 of 45 scored');
+    expect(scoredOf(1200, 1513)).toBe('1,200 of 1,513 scored');
+  });
+
+  it('flags a % based on under half the shipments (e.g. Nov 3–4: 13 of 45)', () => {
+    expect(lowCoverage(13, 45)).toBe(true);
+    expect(lowCoverage(30, 45)).toBe(false);
+    expect(lowCoverage(0, 0)).toBe(false);
+  });
+});
+
+describe('QA: loads with no customer bill count as missing revenue', () => {
+  it('flags $0 revenue with a carrier cost, not a load with neither', async () => {
+    const { isMissingRevenue } = await import('@/lib/computeLoads');
+    expect(isMissingRevenue(mk('CL-27496', { revenue: 0, carrierCost: 4400 }))).toBe(true);
+    expect(isMissingRevenue(mk('A', { revenue: undefined }))).toBe(true);
+    expect(isMissingRevenue(mk('B', { revenue: 0, carrierCost: 0 }))).toBe(false);
+    expect(isMissingRevenue(mk('C', { revenue: 4800, carrierCost: 4400 }))).toBe(false);
   });
 });

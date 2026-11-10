@@ -38,7 +38,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     teams, owners, equipmentTypes, comparisonMode, setComparisonMode,
     timeframePreset, setTimeframePreset, viewMode, setViewMode,
     dataSource, dataLoading, dataError, refreshLoads, rawLoads, importBusy,
-    resetFilters, filtersActive, asOf, setAsOf, snapshotAt, snapshots,
+    resetFilters, filtersActive, asOf, setAsOf, snapshotAt, snapshots, lastSyncedAt,
   } = useData();
 
   // Same base as "Total Loads in Dataset": canceled/draft loads are synced but excluded from every metric.
@@ -48,7 +48,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   const sourceLabel =
   dataLoading ? 'Loading…' :
-  dataSource === 'turvo' ? `Turvo · ${fmtN(activeCount)} loads` :
+  dataSource === 'turvo'
+   ? `Turvo · ${fmtN(activeCount)} loads${lastSyncedAt ? ` · synced ${formatBusinessDateTime(lastSyncedAt)}` : ''}` :
   dataSource === 'csv' ? `CSV import · ${fmtN(activeCount)} loads` :
   'No data, open Settings';
 

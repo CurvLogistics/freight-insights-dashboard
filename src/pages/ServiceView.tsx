@@ -11,6 +11,7 @@ import { summarizeOtd, deliveryStatus, OTD_BASIS_LABEL, DELAY_FAULT_LABEL, type 
 import { formatUSDateTime } from '@/lib/dates';
 import { hoursAtShipperOf, hoursAtReceiverOf, longWaitAtShipper, longWaitAtReceiver, formatHours, LONG_WAIT_HOURS } from '@/lib/dwell';
 import { METRIC_INFO, type MetricInfo } from '@/lib/metricInfo';
+import { scoredOf, lowCoverage } from '@/lib/scoredCounts';
 
 type StatusFilter = 'all' | 'on-time' | 'late' | 'hidden' | 'customer' | 'shipper' | 'excluded' | 'on-time-pickup' | 'late-pickup' | 'unknown' | 'long-wait';
 type GroupBy = 'broker' | 'team' | 'customer' | 'carrier';
@@ -69,6 +70,7 @@ export default function ServiceView() {
       total: loads.length,
       puPct: pct(knownPu.filter(l => l.onTimePickup === 'On Time').length, knownPu.length),
       puLate: knownPu.filter(l => l.onTimePickup === 'Late').length,
+      puKnown: knownPu.length,
       delPct: pct(knownDel.filter(l => del(l) === 'On Time').length, knownDel.length),
       delKnown: knownDel.length,
       turvoPct: pct(knownTurvo.filter(l => l.onTimeDeliveryTurvo === 'On Time').length, knownTurvo.length),
@@ -134,13 +136,14 @@ export default function ServiceView() {
         <DataWarnings warnings={[
           ...(!usingNewRules ? ['Most loads were not synced with the new rules yet — run Settings → Sync now (180 days) so on-time uses original vs. rescheduled dates.'] : []),
           ...(kpi.unknown > 0 ? [`${kpi.unknown} shipments have no delivery arrival time in Turvo — excluded from on-time %`] : []),
+          ...(lowCoverage(kpi.delKnown, kpi.total) ? [`On-time delivery is based on only ${kpi.delKnown} of ${kpi.total} shipments — most haven't delivered yet, so the % may change a lot.`] : []),
         ]} />
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 2xl:grid-cols-8 gap-3">
         <MetricCard label="Total Shipments" value={kpi.total.toLocaleString('en-US')} sub="In current filters" tone="neutral" info={METRIC_INFO.totalShipments} onClick={() => openList('all')} />
-        <MetricCard label="On-Time Pickup" value={fmtPct(kpi.puPct)} sub={`${kpi.puLate} late pickups`} tone={kpi.puPct != null && kpi.puPct >= 90 ? 'good' : 'warn'} info={METRIC_INFO.onTimePickup} onClick={() => openList('on-time-pickup')} secondary={{ label: `${kpi.puLate} late`, onClick: () => openList('late-pickup') }} />
-        <MetricCard label={basis === 'original' ? 'On-Time vs Original Appt' : 'True On-Time Delivery'} value={fmtPct(kpi.delPct)} sub={`${basis === 'original' ? `Fair ${fmtPct(kpi.fairPct)}` : `Original appt ${fmtPct(kpi.rawPct)}`}${kpi.turvoPct != null ? ` · Turvo ${fmtPct(kpi.turvoPct)}` : ''}`} tone={'good'} info={basis === 'original' ? METRIC_INFO.otdOriginal : METRIC_INFO.otdFair} />
+        <MetricCard label="On-Time Pickup" value={fmtPct(kpi.puPct)} sub={scoredOf(kpi.puKnown, kpi.total)} tone={kpi.puPct != null && kpi.puPct >= 90 && !lowCoverage(kpi.puKnown, kpi.total) ? 'good' : 'warn'} info={METRIC_INFO.onTimePickup} onClick={() => openList('on-time-pickup')} secondary={{ label: `${kpi.puLate} late`, onClick: () => openList('late-pickup') }} />
+        <MetricCard label={basis === 'original' ? 'On-Time vs Original Appt' : 'True On-Time Delivery'} value={fmtPct(kpi.delPct)} sub={`${scoredOf(kpi.delKnown, kpi.total)} · ${basis === 'original' ? `Fair ${fmtPct(kpi.fairPct)}` : `Original appt ${fmtPct(kpi.rawPct)}`}${kpi.turvoPct != null ? ` · Turvo ${fmtPct(kpi.turvoPct)}` : ''}`} tone={lowCoverage(kpi.delKnown, kpi.total) ? 'warn' : 'good'} info={basis === 'original' ? METRIC_INFO.otdOriginal : METRIC_INFO.otdFair} />
         <MetricCard label="Late Shipments" value={kpi.late.toString()} sub="Late at delivery" tone={kpi.late === 0 ? 'good' : 'bad'} info={METRIC_INFO.lateShipments} onClick={() => openList('late')} />
         <MetricCard label="Hidden Late" value={kpi.hidden.toString()} sub="On time in Turvo, date moved" tone={kpi.hidden === 0 ? 'good' : 'bad'} info={METRIC_INFO.hiddenLate} onClick={() => openList('hidden')} />
         <MetricCard label="Rescheduled (Cust/Shipper)" value={kpi.excluded.toString()} sub={`${kpi.customer} customer · ${kpi.shipper} shipper · ${basis === 'fair' ? 'not in on-time %' : 'scored in this view'}`} tone="neutral" info={METRIC_INFO.rescheduled} onClick={() => openList('excluded')} />
@@ -180,8 +183,12 @@ export default function ServiceView() {
                     <td className="py-2">{g.name}</td>
                     <td className="py-2 text-right font-mono">{g.loads}</td>
                     <td className="py-2 text-right font-mono">{g.late}</td>
-                    <td className={`py-2 text-right font-mono ${otd != null && otd < 80 ? 'text-destructive' : ''}`}>{fmtPct(otd)}</td>
-                    <td className="py-2 text-right font-mono">{fmtPct(pct(g.puOnTime, g.puKnown))}</td>
+                    <td className={`py-2 text-right font-mono ${otd != null && otd < 80 ? 'text-destructive' : ''}`} title={`${g.onTime} on time of ${g.known} scored`}>
+                      {fmtPct(otd)} <span className="text-muted-foreground text-xs">({g.known})</span>
+                    </td>
+                    <td className="py-2 text-right font-mono" title={`${g.puOnTime} on time of ${g.puKnown} scored`}>
+                      {fmtPct(pct(g.puOnTime, g.puKnown))} <span className="text-muted-foreground text-xs">({g.puKnown})</span>
+                    </td>
                     <td className="py-2 text-right font-mono">{g.hidden || '—'}</td>
                                         <td className="py-2 text-right font-mono">{g.excluded || '—'}</td>
 

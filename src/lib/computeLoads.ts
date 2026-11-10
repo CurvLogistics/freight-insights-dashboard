@@ -117,10 +117,17 @@ export function isMissingPickup(l: Load, now: string = new Date().toISOString())
   return !!due && due <= now && !l.pickupArrival;
 }
 
+/**
+ * No customer bill yet. Turvo syncs an unbilled load as $0, not empty, so a $0 load
+ * that already has a carrier cost counts as missing revenue too (QA: CL-27496, CL-27520).
+ */
+export const isMissingRevenue = (l: Load): boolean =>
+  l.revenue == null || (l.revenue === 0 && (l.carrierCost ?? 0) > 0);
+
 export type DataQualityIssue = 'missingRevenue' | 'missingCarrierCost' | 'missingPickup' | 'missingDelivery';
 
 export const DATA_QUALITY_CHECKS: Record<DataQualityIssue, { label: string; match: (l: Load) => boolean; fix: string }> = {
-  missingRevenue:     { label: 'Missing Revenue',  match: l => l.revenue == null,     fix: 'Add the customer rate in Turvo (Financials → Receivables).' },
+  missingRevenue:     { label: 'Missing Revenue',  match: isMissingRevenue,           fix: 'Add the customer rate in Turvo (Financials → Receivables).' },
   missingCarrierCost: { label: 'Missing Cost',     match: l => l.carrierCost == null, fix: 'Add the carrier rate in Turvo (Financials → Payables).' },
   missingPickup:      { label: 'Missing Pickup',   match: l => isMissingPickup(l),    fix: 'Pickup appointment has passed but no arrival is recorded — add the pickup arrival in Turvo.' },
   missingDelivery:    { label: 'Missing Delivery', match: l => !l.deliveryDate,       fix: 'Add the delivery appointment or arrival in Turvo.' },
@@ -138,7 +145,7 @@ export function computeDataQuality(allLoads: Load[]): DataQuality {
 
   return {
     totalLoads: total,
-    missingRevenue: loads.filter(l => l.revenue == null).length,
+    missingRevenue: loads.filter(isMissingRevenue).length,
     missingCarrierCost: loads.filter(l => l.carrierCost == null).length,
     missingPickup: loads.filter(l => isMissingPickup(l)).length,
     missingDelivery: loads.filter(l => !l.deliveryDate).length,
