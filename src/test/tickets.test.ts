@@ -476,3 +476,9 @@ describe('QA: loads with no customer bill count as missing revenue', () => {
     expect(isMissingRevenue(mk('C', { revenue: 4800, carrierCost: 4400 }))).toBe(false);
   });
 });
+
+it('QA CL-27161: missed revised date is the carrier\'s even after a move', () => {
+  const l = computeLoad(rescheduled({ rescheduleReason: 'unknown', onTimeDeliveryTurvo: 'Late' }));
+  expect(l.excludedFromOnTime).toBe(false);
+  expect(l.delayFault).toBe('carrier');
+});

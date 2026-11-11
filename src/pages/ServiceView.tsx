@@ -7,7 +7,7 @@ import { DataTrustBadge, DataWarnings } from '@/components/DataTrust';
 import type { ComputedLoad } from '@/types/loads';
 import LoadListDrawer from '@/components/LoadListDrawer';
 import { isScored } from '@/lib/computeLoads';
-import { summarizeOtd, deliveryStatus, OTD_BASIS_LABEL, DELAY_FAULT_LABEL, type OtdBasis } from '@/lib/delayReasons';
+import { summarizeOtd, deliveryStatus, OTD_BASIS_LABEL, DELAY_FAULT_LABEL, requestedBy, type OtdBasis } from '@/lib/delayReasons';
 import { formatUSDateTime } from '@/lib/dates';
 import { hoursAtShipperOf, hoursAtReceiverOf, longWaitAtShipper, longWaitAtReceiver, formatHours, LONG_WAIT_HOURS } from '@/lib/dwell';
 import { METRIC_INFO, type MetricInfo } from '@/lib/metricInfo';
@@ -272,6 +272,8 @@ export default function ServiceView() {
           { label: 'At shipper', align: 'right', render: l => formatHours(hoursAtShipperOf(l)), csv: l => hoursAtShipperOf(l) },
           { label: 'Original delivery appt', render: l => formatUSDateTime(l.originalDeliveryAppointment), csv: l => l.originalDeliveryAppointment },
           { label: 'Current delivery appt', render: l => formatUSDateTime(l.scheduledDeliveryDate), csv: l => l.scheduledDeliveryDate },
+          { label: 'Customer requested date', render: l => formatUSDateTime(l.customerRequestedDelivery), csv: l => l.customerRequestedDelivery },
+          { label: 'Requested by', render: l => requestedBy(l), csv: l => requestedBy(l) },
           { label: 'Delivery check-in', render: l => formatUSDateTime(l.deliveryArrival), csv: l => l.deliveryArrival },
           { label: 'Delivery check-out', render: l => formatUSDateTime(l.deliveryDeparture), csv: l => l.deliveryDeparture },
           { label: 'At receiver', align: 'right', render: l => formatHours(hoursAtReceiverOf(l)), csv: l => hoursAtReceiverOf(l) },

@@ -37,15 +37,25 @@ export function getDelayFault(
   load: Pick<Load, 'delayReason' | 'deliveryRescheduled' | 'rescheduleReason' | 'onTimeDeliveryTurvo'>,
   rawDelivery: OnTimeStatus,
 ): { fault: DelayFault | null; source: DelayFaultSource | null } {
+  // A missed revised date is the carrier's, whatever moved the date (same rule as isExcludedReschedule)
+  if (load.deliveryRescheduled && load.onTimeDeliveryTurvo === 'Late') return { fault: 'carrier', source: 'inferred' };
   const explicit = parseDelayReason(load.delayReason);
   if (explicit) return { fault: explicit, source: 'turvo' };
-  if (load.onTimeDeliveryTurvo === 'Late') return { fault: 'carrier', source: 'inferred' };
   if (load.deliveryRescheduled && load.rescheduleReason) {
     const fault: DelayFault = load.rescheduleReason === 'shipper_delay' ? 'shipper' : load.rescheduleReason;
     return { fault, source: 'inferred' };
   }
   if (rawDelivery === 'Late') return { fault: 'carrier', source: 'inferred' };
   return { fault: null, source: null };
+}
+
+/** Who asked for the date change. Only Turvo evidence counts as confirmed. */
+export function requestedBy(l: Pick<Load, 'deliveryRescheduled' | 'rescheduleReason' | 'delayReason'>): string {
+  if (!l.deliveryRescheduled) return '—';
+  if (l.rescheduleReason === 'customer') return 'Customer (matches requested date)';
+  const explicit = parseDelayReason(l.delayReason);
+  if (explicit) return `${DELAY_FAULT_LABEL[explicit]} (entered in Turvo)`;
+  return 'Not recorded in Turvo';
 }
 
 export interface OtdSummary {

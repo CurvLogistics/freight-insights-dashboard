@@ -41,6 +41,8 @@ export interface Load {
   deliveryDeparture?: string;
   originalPickupAppointment?: string;
   originalDeliveryAppointment?: string;
+  /** Delivery date the customer asked for: Turvo plannedRequestedDate (sync: customerRequestedDelivery). */
+  customerRequestedDelivery?: string;
   /** Pickup vs. its current appointment (customer pickup changes never count as late). */
   onTimePickup?: OnTimeStatus;
   /** Fair delivery result: original date, unless the customer/shipper caused the move. */
