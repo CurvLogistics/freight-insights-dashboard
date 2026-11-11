@@ -19,6 +19,8 @@ export const isScored = (s?: OnTimeStatus) => s === 'On Time' || s === 'Late';
    */
   export function isExcludedReschedule(load: Load, rawDelivery: OnTimeStatus = 'Unknown'): boolean {
     if (load.serviceSource !== 'turvo') return false;
+    // Late against the revised appointment is always scored against the carrier (QA: CL-27161)
+    if (load.onTimeDeliveryTurvo === 'Late') return false;
     const explicit = parseDelayReason(load.delayReason);
     if (explicit) return explicit !== 'carrier' && (!!load.deliveryRescheduled || rawDelivery === 'Late');
     if (!load.deliveryRescheduled || !load.rescheduleReason) return false;

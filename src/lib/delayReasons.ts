@@ -1,13 +1,14 @@
 import type { Load, OnTimeStatus } from '@/types/loads';
 
-/** Who caused a delivery delay / reschedule. */
-export type DelayFault = 'customer' | 'shipper' | 'carrier';
+/** Who caused a delivery delay / reschedule. 'unknown' = moved with no reason we can trust. */
+export type DelayFault = 'customer' | 'shipper' | 'carrier' | 'unknown';
 export type DelayFaultSource = 'turvo' | 'inferred';
 
 export const DELAY_FAULT_LABEL: Record<DelayFault, string> = {
   customer: 'Customer / receiver',
   shipper: 'Shipper (product not ready)',
   carrier: 'Carrier',
+  unknown: 'Unconfirmed — needs review',
 };
 
 /**
@@ -28,15 +29,17 @@ export function parseDelayReason(text?: string | null): DelayFault | null {
 /**
  * Delay fault for one load. Priority:
  * 1. the structured reason entered in Turvo (once the field exists — ticket 14)
- * 2. the reason the sync inferred from a delivery reschedule
- * 3. a late delivery with no excuse is the carrier's
+ * 2. late even against the revised appointment → carrier (no reschedule excuses that)
+ * 3. the reason the sync inferred from a delivery reschedule ('unknown' stays unknown)
+ * 4. a late delivery with no reschedule is the carrier's
  */
 export function getDelayFault(
-  load: Pick<Load, 'delayReason' | 'deliveryRescheduled' | 'rescheduleReason'>,
+  load: Pick<Load, 'delayReason' | 'deliveryRescheduled' | 'rescheduleReason' | 'onTimeDeliveryTurvo'>,
   rawDelivery: OnTimeStatus,
 ): { fault: DelayFault | null; source: DelayFaultSource | null } {
   const explicit = parseDelayReason(load.delayReason);
   if (explicit) return { fault: explicit, source: 'turvo' };
+  if (load.onTimeDeliveryTurvo === 'Late') return { fault: 'carrier', source: 'inferred' };
   if (load.deliveryRescheduled && load.rescheduleReason) {
     const fault: DelayFault = load.rescheduleReason === 'shipper_delay' ? 'shipper' : load.rescheduleReason;
     return { fault, source: 'inferred' };
@@ -79,7 +82,7 @@ export function summarizeOtd(loads: OtdLoad[]): OtdSummary {
     }
     if (l.excludedFromOnTime) {
       if (l.delayFault === 'shipper') s.excludedShipper++;
-      else s.excludedCustomer++;
+      else if (l.delayFault === 'customer') s.excludedCustomer++;
     }
   });
   s.rawPct = s.rawScored ? (s.rawOnTime / s.rawScored) * 100 : null;

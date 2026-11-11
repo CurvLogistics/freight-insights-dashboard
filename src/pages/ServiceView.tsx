@@ -13,7 +13,7 @@ import { hoursAtShipperOf, hoursAtReceiverOf, longWaitAtShipper, longWaitAtRecei
 import { METRIC_INFO, type MetricInfo } from '@/lib/metricInfo';
 import { scoredOf, lowCoverage } from '@/lib/scoredCounts';
 
-type StatusFilter = 'all' | 'on-time' | 'late' | 'hidden' | 'customer' | 'shipper' | 'excluded' | 'on-time-pickup' | 'late-pickup' | 'unknown' | 'long-wait';
+type StatusFilter = 'all' | 'on-time' | 'late' | 'hidden' | 'customer' | 'shipper' | 'excluded' | 'unconfirmed' | 'on-time-pickup' | 'late-pickup' | 'unknown' | 'long-wait';
 type GroupBy = 'broker' | 'team' | 'customer' | 'carrier';
 
 const STATUS_FILTERS: { key: StatusFilter; label: string; match: (l: ComputedLoad, del: ComputedLoad['onTimeDelivery']) => boolean }[] = [
@@ -25,7 +25,8 @@ const STATUS_FILTERS: { key: StatusFilter; label: string; match: (l: ComputedLoa
   { key: 'late-pickup', label: 'Late pickup', match: l => l.onTimePickup === 'Late' },
   { key: 'customer', label: 'Customer fault (excused)', match: l => l.excludedFromOnTime && l.delayFault === 'customer' },
   { key: 'shipper', label: 'Shipper fault (excused)', match: l => l.excludedFromOnTime && l.delayFault === 'shipper' },
-  { key: 'excluded', label: 'Rescheduled by customer/shipper', match: l => l.excludedFromOnTime },
+  { key: 'excluded', label: 'Rescheduled by customer/shipper', match: l => l.excludedFromOnTime && (l.delayFault === 'customer' || l.delayFault === 'shipper') },
+  { key: 'unconfirmed', label: 'Reschedule — reason unknown', match: l => !!l.deliveryRescheduled && l.delayFault === 'unknown' },
   { key: 'unknown', label: "Can't score", match: (_l, d) => d === 'Unknown' },
   { key: 'long-wait', label: `Waited ${LONG_WAIT_HOURS}h+ at shipper/receiver`, match: l => longWaitAtShipper(l) || longWaitAtReceiver(l) },
 ];
@@ -338,7 +339,7 @@ function StatusBadge({ status, hidden }: { status: string; hidden?: boolean }) {
   return <Badge variant={variant} className="text-xs whitespace-nowrap">{hidden ? 'Late (hidden)' : status}</Badge>;
 }
 
-const REASON_LABEL: Record<string, string> = { customer: 'Customer', shipper_delay: 'Shipper delay', carrier: 'Carrier' };
+const REASON_LABEL: Record<string, string> = { customer: 'Customer', shipper_delay: 'Shipper delay', carrier: 'Carrier', unknown: 'Reason unknown' };
 
 function MovedCell({ load }: { load: ComputedLoad }) {
   if (!load.deliveryRescheduled || !load.rescheduleReason) return <span className="text-muted-foreground">—</span>;

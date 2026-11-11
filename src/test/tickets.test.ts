@@ -38,6 +38,21 @@ describe('reschedules and on-time %', () => {
     expect(l.excludedFromOnTime).toBe(true);
   });
 
+  it('never excuses a load that was late against its revised appointment (QA: CL-27161)', () => {
+    const l = computeLoad(rescheduled({ rescheduleReason: 'customer', onTimeDeliveryTurvo: 'Late', onTimeDeliveryOriginal: 'Late' }));
+    expect(l.excludedFromOnTime).toBe(false);
+    expect(l.onTimeDelivery).toBe('Late');
+    expect(l.delayFault).toBe('carrier');
+  });
+
+  it('scores a move with an unknown reason and flags it for review', () => {
+    const l = computeLoad(rescheduled({ rescheduleReason: 'unknown', onTimeDeliveryTurvo: 'On Time', onTimeDeliveryOriginal: 'Late' }));
+    expect(l.excludedFromOnTime).toBe(false);
+    expect(l.onTimeDelivery).toBe('Late');
+    expect(l.delayFault).toBe('unknown');
+    expect(summarizeOtd([l]).excludedCustomer).toBe(0);
+  });
+
   it('still scores carrier reschedules', () => {
     const l = computeLoad(rescheduled({ rescheduleReason: 'carrier' }));
     expect(l.onTimeDelivery).toBe('Late');

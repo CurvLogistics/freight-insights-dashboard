@@ -5,7 +5,8 @@ import type { DelayFault, DelayFaultSource } from '@/lib/delayReasons';
 export type OnTimeStatus = 'On Time' | 'Late' | 'Excluded' | 'Unknown';
 
 /** Why a delivery appointment moved (set by the Turvo sync; Turvo stores no reason, so it is inferred). */
-export type RescheduleReason = 'customer' | 'shipper_delay' | 'carrier';
+/** 'unknown' = the date moved but nothing says who moved it: scored, never excused. */
+export type RescheduleReason = 'customer' | 'shipper_delay' | 'carrier' | 'unknown';
 
 export interface Load {
   loadId: string;
