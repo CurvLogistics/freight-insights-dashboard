@@ -26,7 +26,7 @@ const STATUS_FILTERS: { key: StatusFilter; label: string; match: (l: ComputedLoa
   { key: 'customer', label: 'Customer fault (excused)', match: l => l.excludedFromOnTime && l.delayFault === 'customer' },
   { key: 'shipper', label: 'Shipper fault (excused)', match: l => l.excludedFromOnTime && l.delayFault === 'shipper' },
   { key: 'excluded', label: 'Rescheduled by customer/shipper', match: l => l.excludedFromOnTime && (l.delayFault === 'customer' || l.delayFault === 'shipper') },
-  { key: 'unconfirmed', label: 'Reschedule — reason unknown', match: l => !!l.deliveryRescheduled && l.delayFault === 'unknown' },
+  { key: 'unconfirmed', label: 'Reschedule — reason unknown', match: l => !!l.deliveryRescheduled && l.rescheduleReason === 'unknown' },
   { key: 'unknown', label: "Can't score", match: (_l, d) => d === 'Unknown' },
   { key: 'long-wait', label: `Waited ${LONG_WAIT_HOURS}h+ at shipper/receiver`, match: l => longWaitAtShipper(l) || longWaitAtReceiver(l) },
 ];
