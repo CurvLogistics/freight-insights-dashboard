@@ -12,6 +12,8 @@ import TeamFilter from '@/components/TeamFilter';
 import { VIEW_MODE_HELP } from '@/lib/filters';
 import { formatBusinessDateTime } from '@/lib/dates';
 import { usePendingUsers } from '@/hooks/usePendingUsers';
+import { UserButton } from '@clerk/react';
+import NotificationBell from '@/components/NotificationBell';
 
 const navItems: { id: ViewType; label: string; icon: React.ElementType }[] = [
   { id: 'dashboard', label: 'Executive Overview', icon: LayoutDashboard },
@@ -256,6 +258,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               <X className="w-3.5 h-3.5" />
               Clear filters
             </button>
+          </div>
+          {/* Notifications next to the profile button */}
+          <div className="ml-auto flex items-center gap-2 pl-2">
+            <NotificationBell />
+            <UserButton />
           </div>
         </header>
 

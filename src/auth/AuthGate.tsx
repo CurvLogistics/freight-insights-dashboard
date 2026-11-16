@@ -30,10 +30,6 @@ export function AuthGate({ children }: { children: ReactNode }) {
       </Show>
 
       <Show when="signed-in">
-        {/* Temporary floating account button — move <UserButton /> into your header later if you like */}
-        <div style={{ position: 'fixed', top: 12, right: 16, zIndex: 1000 }}>
-          <UserButton />
-        </div>
         <AccessGate>{children}</AccessGate>
       </Show>
     </>
@@ -58,6 +54,10 @@ function AccessGate({ children }: { children: ReactNode }) {
         textAlign: 'center',
       }}
     >
+      {/* The app's header (with the profile button) isn't shown yet, so offer sign-out here */}
+      <div style={{ position: 'fixed', top: 12, right: 16 }}>
+        <UserButton />
+      </div>
       <h1 style={{ fontSize: 22, fontWeight: 600, margin: 0 }}>Waiting for access</h1>
       <p style={{ margin: 0, maxWidth: 420, color: '#64748b' }}>
         You're signed in as {email}. An admin needs to assign your role in Settings → Users &amp; roles.

@@ -482,3 +482,31 @@ it('QA CL-27161: missed revised date is the carrier\'s even after a move', () =>
   expect(l.excludedFromOnTime).toBe(false);
   expect(l.delayFault).toBe('carrier');
 });
+
+describe('Notifications', () => {
+  it('flags waiting users, an overdue sync, unbilled loads and missing revenue', async () => {
+    const { buildNotifications } = await import('@/lib/notifications');
+    const now = new Date('2026-11-16T15:00:00Z');
+    const n = buildNotifications({
+      now,
+      pendingUsers: 2,
+      lastSyncedAt: '2026-11-14T10:00:00Z',
+      dataError: null,
+      loads: [
+        mk('A', { readyToBillDate: '2026-11-01' }),
+        mk('B', { readyToBillDate: '2026-11-01', invoiceSentDate: '2026-11-02' }),
+        mk('C', { revenue: 0, carrierCost: 900 }),
+        mk('D', { readyToBillDate: '2026-11-01', shipmentStatus: 'Canceled' }),
+      ],
+    });
+    expect(n.map(x => x.id)).toEqual(['pending-users', 'stale-sync', 'unbilled', 'missing-revenue']);
+    expect(n[0].title).toBe('2 people are waiting for access');
+    expect(n[2].title).toBe('1 load ready to bill, not invoiced');
+  });
+
+  it('is empty when everything is fine', async () => {
+    const { buildNotifications } = await import('@/lib/notifications');
+    const now = new Date('2026-11-16T15:00:00Z');
+    expect(buildNotifications({ now, pendingUsers: 0, lastSyncedAt: '2026-11-16T10:00:00Z', dataError: null, loads: [mk('A')] })).toEqual([]);
+  });
+});
