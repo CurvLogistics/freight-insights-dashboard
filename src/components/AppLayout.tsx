@@ -145,14 +145,21 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <main className="flex-1 flex flex-col overflow-hidden">
         {/* Toolbar */}
         <header className="bg-card border-b px-6 py-3 flex items-center gap-3 shrink-0 flex-wrap">
-          <div className="relative flex-1 max-w-sm min-w-[180px]">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input
-              placeholder="Search loads, customers, carriers, cities..."
-              value={filters.search}
-              onChange={e => setFilters(f => ({ ...f, search: e.target.value }))}
-              className="pl-9 h-9"
-            />
+          {/* Search on the left, notifications + profile on the right, always on one line */}
+          <div className="flex items-center gap-3 w-full">
+            <div className="relative flex-1 max-w-sm min-w-[180px]">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                placeholder="Search loads, customers, carriers, cities..."
+                value={filters.search}
+                onChange={e => setFilters(f => ({ ...f, search: e.target.value }))}
+                className="pl-9 h-9"
+              />
+            </div>
+            <div className="ml-auto flex items-center gap-2 shrink-0">
+              <NotificationBell />
+              <UserButton />
+            </div>
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
@@ -258,11 +265,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               <X className="w-3.5 h-3.5" />
               Clear filters
             </button>
-          </div>
-          {/* Notifications next to the profile button */}
-          <div className="ml-auto flex items-center gap-2 pl-2">
-            <NotificationBell />
-            <UserButton />
           </div>
         </header>
 
