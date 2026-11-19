@@ -12,7 +12,7 @@ import ComparisonRankTable, { ComparisonRow } from '@/components/ComparisonRankT
 import BusinessIntelligence from '@/components/BusinessIntelligence';
 import { finRev, finCost, DATA_QUALITY_CHECKS, getDataQualityLoads, computeDataQuality, type DataQualityIssue } from '@/lib/computeLoads';
 import LoadListDrawer from '@/components/LoadListDrawer';
-import { aggregate, groupBy, shipDate, teamOf, ownerOf, customerOf, matchesFocus, matchesFilters, selectLoads, minRankLoads, daysInRange, VIEW_MODE_HELP, type Focus } from '@/lib/filters';
+import { aggregate, groupBy, shipDate, teamOf, ownerOf, applyFocus, splitByCustomer, matchesFilters, selectLoads, minRankLoads, daysInRange, VIEW_MODE_HELP, type Focus } from '@/lib/filters';
 import { formatUSShortDate, formatUSDate } from '@/lib/dates';
 import { getDatasetBounds } from '@/lib/comparison';
 import { LANE_COMPARE_PRESETS, laneCompareRanges, type LaneComparePreset, type LaneCompareRanges } from '@/lib/laneComparison';
@@ -36,8 +36,9 @@ export default function DashboardView() {
 
   // A row click (customer / broker / lane) filters EVERY section on this page, including
   // Business Intelligence below — before, only the KPIs and charts followed it.
-  const filteredLoads = useMemo(() => (dashFilter ? loads.filter(l => matchesFocus(l, dashFilter)) : loads), [loads, dashFilter]);
-  const filteredPrevLoads = useMemo(() => (dashFilter ? prevLoads.filter(l => matchesFocus(l, dashFilter)) : prevLoads), [prevLoads, dashFilter]);
+    // A customer click keeps only that customer's part of split-billed loads (applyFocus).
+  const filteredLoads = useMemo(() => applyFocus(loads, dashFilter), [loads, dashFilter]);
+  const filteredPrevLoads = useMemo(() => applyFocus(prevLoads, dashFilter), [prevLoads, dashFilter]);
 
   const cur = aggregate(filteredLoads);
   const totalLoads = cur.loads, totalRevenue = cur.revenue, totalProfit = cur.profit, avgMargin = cur.margin;
@@ -147,11 +148,13 @@ export default function DashboardView() {
    // Brokers: the broker on the load (ownerOf), loads with none go to "Unassigned" so the
   // table can always add up to the total. Same rule as the owner filter and Productivity.
   const minLoads = minRankLoads(filters.dateRange);
-  const rankBy = (keyFn: (l: typeof loads[0]) => string) => {
-    const all = [...groupBy(loads, keyFn).entries()]
+  const rankGroups = (groups: Map<string, typeof loads>) => {
+    const all = [...groups.entries()]
       .map(([name, ls]) => { const a = aggregate(ls); return { name, loads: a.loads, revenue: a.finRevenue, cost: a.cost, profit: a.profit, margin: a.margin, hasAnyCost: a.finLoads > 0 }; });
     const rows = all.filter(r => r.loads >= minLoads && r.revenue > 0 && r.hasAnyCost);
-    const shownLoads = rows.reduce((s, r) => s + r.loads, 0);
+    // Distinct loads: a split-billed load sits under each of its customers but is one load.
+    const shownIds = new Set(rows.flatMap(r => (groups.get(r.name) ?? []).map(l => l.loadId)));
+    const shownLoads = shownIds.size;
     const note = shownLoads === loads.length
       ? `All ${loads.length} loads included.`
       : `${shownLoads} of ${loads.length} loads included — ${all.length - rows.length} with fewer than ${minLoads} loads or no carrier cost are hidden.`;
@@ -160,7 +163,9 @@ export default function DashboardView() {
 
     // % of Profit is each row's share of the profit of ALL loads in the current filters.
   const allProfit = aggregate(loads).profit;
-  const qualifiedCust = rankBy(customerOf);
+  const rankBy = (keyFn: (l: typeof loads[0]) => string) => rankGroups(groupBy(loads, keyFn));
+  // Split-billed loads count toward every customer on them, each with its own billed amount.
+  const qualifiedCust = rankGroups(splitByCustomer(loads));
   const qualifiedBrokers = rankBy(ownerOf);
   const qualifiedLanes = rankBy(l => l.lane);
   const rankEmpty = (what: string) =>

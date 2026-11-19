@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useData } from '@/context/DataContext';
 import { finRev, finCost } from '@/lib/computeLoads';
+import { customerShares, customerPart } from '@/lib/filters';
 import { formatUSDate } from '@/lib/dates';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -67,7 +68,7 @@ export default function InsightsView() {
 
     // Top customers by profit
     const custMap = new Map<string, { rev: number; cost: number; loads: number }>();
-    curLoads.forEach(l => {
+    curLoads.flatMap(l => customerShares(l).map(sh => customerPart(l, sh))).forEach(l => {
       const name = l.customerName || 'Unknown';
       const e = custMap.get(name) || { rev: 0, cost: 0, loads: 0 };
       e.rev += finRev(l); e.cost += finCost(l); e.loads++;

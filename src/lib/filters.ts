@@ -68,9 +68,58 @@ export const VIEW_MODE_HELP =
  */
 export type Focus = { type: 'customer' | 'broker' | 'lane'; value: string } | null;
 export const customerOf = (l: Pick<Load, 'customerName'>) => l.customerName?.trim() || 'Unknown';
+
+/**
+ * Who is billed on a load and how much. A load billed to 2+ customers in Turvo (split billing)
+ * returns one entry per customer with that customer's amount; share = its part of the load's revenue.
+ * Any other load returns its one customer with the whole revenue (share 1).
+ */
+export function customerShares(l: Pick<Load, 'customerName' | 'customers' | 'revenue'>): { name: string; revenue: number; share: number }[] {
+  const parts = (l.customers ?? []).filter(c => c.name?.trim());
+  if (parts.length < 2) return [{ name: customerOf(l), revenue: l.revenue ?? 0, share: 1 }];
+  const total = parts.reduce((s, c) => s + (c.revenue || 0), 0);
+  return parts.map(c => ({ name: c.name.trim(), revenue: c.revenue || 0, share: total ? (c.revenue || 0) / total : 1 / parts.length }));
+}
+
+/** The part of a load that belongs to one customer: its billed revenue, and carrier cost split by the same share. */
+export function customerPart<T extends Load>(l: T, s: { name: string; revenue: number; share: number }): T {
+  if (s.share === 1) return l;
+  const gp = (l as { grossProfit?: number }).grossProfit;
+  return {
+    ...l, customerName: s.name, revenue: s.revenue,
+    carrierCost: l.carrierCost != null ? l.carrierCost * s.share : l.carrierCost,
+    ...(gp != null ? { grossProfit: gp * s.share } : {}),
+  };
+}
+
+/** Group loads by customer. Split-billed loads go to every customer on them, each with its own part. */
+export function splitByCustomer<T extends Load>(ls: T[]): Map<string, T[]> {
+  const m = new Map<string, T[]>();
+  for (const l of ls) {
+    for (const s of customerShares(l)) {
+      const arr = m.get(s.name);
+      const part = customerPart(l, s);
+      if (arr) arr.push(part); else m.set(s.name, [part]);
+    }
+  }
+  return m;
+}
+
+/** Apply a click-filter. A customer filter keeps only that customer's part of split-billed loads. */
+export function applyFocus<T extends ComputedLoad>(ls: T[], focus: Focus): T[] {
+  if (!focus) return ls;
+  if (focus.type !== 'customer') return ls.filter(l => matchesFocus(l, focus));
+  const out: T[] = [];
+  for (const l of ls) {
+    const s = customerShares(l).find(c => c.name === focus.value);
+    if (s) out.push(customerPart(l, s));
+  }
+  return out;
+}
+
 export function matchesFocus(l: ComputedLoad, focus: Focus): boolean {
   if (!focus) return true;
-  if (focus.type === 'customer') return customerOf(l) === focus.value;
+  if (focus.type === 'customer') return customerShares(l).some(c => c.name === focus.value);
   if (focus.type === 'broker') return ownerOf(l) === focus.value;
   return l.lane === focus.value;
 }
@@ -88,7 +137,8 @@ export function matchesFilters(l: Load, f: Filters): boolean {
   if (f.equipmentType !== 'all' && l.equipmentType !== f.equipmentType) return false;
   if (f.search) {
     const s = f.search.toLowerCase();
-    const hit = [l.loadId, l.customerName, l.carrierName, l.broker, l.originCity, l.originState, l.destinationCity, l.destinationState]
+    const hit = [l.loadId, l.customerName, l.carrierName, l.broker, l.originCity, l.originState, l.destinationCity, l.destinationState,
+      ...(l.customers ?? []).map(c => c.name), ...(l.carriers ?? []).map(c => c.name)]
       .some(v => v?.toLowerCase().includes(s));
     if (!hit) return false;
   }

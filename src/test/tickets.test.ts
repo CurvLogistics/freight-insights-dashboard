@@ -10,7 +10,7 @@ import { parseDelayReason, summarizeOtd } from '@/lib/delayReasons';
 import { matchesFilters, selectExceptionLoads, type Filters } from '@/lib/filters';
 import { scoredOf, lowCoverage } from '@/lib/scoredCounts';
 import { toBusinessDate } from '@/lib/dates';
-import { selectLoads, shipDate, matchesFocus, minRankLoads, ownerOf, aggregate, groupBy, businessToday, businessTodayDate, addDays } from '@/lib/filters';
+import { selectLoads, shipDate, matchesFocus, minRankLoads, ownerOf, aggregate, groupBy, businessToday, businessTodayDate, addDays, customerShares, splitByCustomer, applyFocus } from '@/lib/filters';
 import { laneOf } from '@/lib/computeLoads';
 import { laneCompareRanges } from '@/lib/laneComparison';
 import { normalizeCityNames } from '@/lib/cityNames';
@@ -526,5 +526,38 @@ describe('Notifications', () => {
     const { buildNotifications } = await import('@/lib/notifications');
     const now = new Date('2026-11-16T15:00:00Z');
     expect(buildNotifications({ now, pendingUsers: 0, lastSyncedAt: '2026-11-16T10:00:00Z', dataError: null, loads: [mk('A')] })).toEqual([]);
+  });
+});
+
+describe('QA: split-billed loads credit every customer (CL-27434, CL-27601)', () => {
+  const split = computeLoad(mk('CL-27601', {
+    customerName: 'PAR PRODUCE LLC', revenue: 10206, carrierCost: 9000, carrierName: 'Truck Co',
+    customers: [{ name: 'PAR PRODUCE LLC', revenue: 4860 }, { name: 'GREENPOINT DISTRIBUTIO', revenue: 5346 }],
+  }));
+  const single = computeLoad(mk('S1', { customerName: 'PAR PRODUCE LLC', carrierName: 'Truck Co' }));
+
+  it('splits revenue by what each customer is billed, and cost by the same share', () => {
+    const by = splitByCustomer([split, single]);
+    const green = aggregate(by.get('GREENPOINT DISTRIBUTIO')!);
+    const par = aggregate(by.get('PAR PRODUCE LLC')!);
+    expect(green.loads).toBe(1);
+    expect(green.revenue).toBe(5346);
+    expect(green.cost).toBeCloseTo(9000 * 5346 / 10206);
+    expect(par.loads).toBe(2);
+    expect(par.revenue).toBe(4860 + 1000);
+    // Customer parts still add up to the whole load
+    expect(green.revenue + par.revenue).toBe(10206 + 1000);
+    expect(green.cost + par.cost).toBeCloseTo(9000 + 800);
+  });
+
+  it('a normal load keeps its one customer and full revenue', () => {
+    expect(customerShares(single)).toEqual([{ name: 'PAR PRODUCE LLC', revenue: 1000, share: 1 }]);
+  });
+
+  it('clicking the second customer finds the load, with only its part', () => {
+    expect(matchesFocus(split, { type: 'customer', value: 'GREENPOINT DISTRIBUTIO' })).toBe(true);
+    const parts = applyFocus([split, single], { type: 'customer', value: 'GREENPOINT DISTRIBUTIO' });
+    expect(parts).toHaveLength(1);
+    expect(parts[0].revenue).toBe(5346);
   });
 });

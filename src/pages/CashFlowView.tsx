@@ -8,6 +8,7 @@ import { METRIC_INFO, type MetricInfo } from '@/lib/metricInfo';
 import { DataWarnings } from '@/components/DataTrust';
 import LoadListDrawer from '@/components/LoadListDrawer';
 import { formatUSDate } from '@/lib/dates';
+import type { Load } from '@/types/loads';
 import {
   cashItems, weeklyForecast, agingBuckets, isFlagged180,
   AR_FLAG_DAYS, CASHFLOW_ASSUMPTIONS as A, type CashItem,
@@ -86,10 +87,22 @@ export default function CashFlowView() {
           { label: 'Expected', render: l => formatUSDate(byId.get(l.loadId)?.date), csv: l => formatUSDate(byId.get(l.loadId)?.date) },
           { label: 'Basis', render: l => <Badge variant="outline" className="text-xs">{byId.get(l.loadId)?.basis}</Badge>, csv: l => byId.get(l.loadId)?.basis },
           { label: 'Age (d)', align: 'right', render: l => byId.get(l.loadId)?.ageDays ?? '—', csv: l => byId.get(l.loadId)?.ageDays },
+          { label: 'Check', render: l => { const f = apCheck(l, byId.get(l.loadId)?.side); return f ? <span className="text-xs text-warning">{f}</span> : ''; },
+            csv: l => apCheck(l, byId.get(l.loadId)?.side) ?? '' },
         ]}
       />
     </div>
   );
+}
+
+/**
+ * Open AP is what we owe the carrier (payable after deductions). When the carrier's invoice in
+ * Turvo says something else, flag it so accounting can fix Turvo (QA: CL-27497 had a $12,000
+ * invoice on a $100 charge).
+ */
+function apCheck(l: Load, side?: 'ar' | 'ap'): string | undefined {
+  if (side !== 'ap' || l.apSettlementAmount == null || l.apInvoiceAmount == null) return undefined;
+  return `Carrier invoice ${usd(l.apSettlementAmount)} ≠ owed ${usd(l.apInvoiceAmount)}`;
 }
 
 function AgingCard({ title, rows, onOpen }: {

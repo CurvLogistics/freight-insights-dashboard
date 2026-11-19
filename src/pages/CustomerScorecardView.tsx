@@ -9,7 +9,7 @@ import { ComputedLoad } from '@/types/loads';
 import { isScored, UNKNOWN_LANE } from '@/lib/computeLoads';
 import { summarizeOtd, type OtdSummary } from '@/lib/delayReasons';
 import { DataTrustBadge, DataWarnings } from '@/components/DataTrust';
-import { businessTodayDate } from '@/lib/filters';
+import { businessTodayDate, customerShares, customerPart } from '@/lib/filters';
 import { KPICard, MiniCard, otpColor } from '@/components/ScorecardCards';
 import { METRIC_INFO, type MetricInfo } from '@/lib/metricInfo';
 
@@ -104,7 +104,9 @@ export default function CustomerScorecardView() {
       all: ComputedLoad[];
     }>();
 
-    regionLoads.forEach(l => {
+     // Split-billed loads (2+ customers in Turvo) count for every customer on them, each with
+    // its own billed revenue and the same share of carrier cost (QA: CL-27434, CL-27601).
+    regionLoads.flatMap(l => customerShares(l).map(s => customerPart(l, s))).forEach(l => {
       const key = (l.customerName || 'Unknown').trim().toUpperCase();
       let e = map.get(key);
       if (!e) {

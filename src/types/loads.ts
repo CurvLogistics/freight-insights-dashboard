@@ -11,7 +11,12 @@ export type RescheduleReason = 'customer' | 'shipper_delay' | 'carrier' | 'unkno
 export interface Load {
   loadId: string;
   customerName?: string;
+  /** Every customer billed on the load, with what each is billed (sync sends it only for 2+ customers). */
+  customers?: { name: string; revenue: number }[];
+  /** Main carrier: the one with the largest payable on the load (sync picks it). */
   carrierName?: string;
+  /** Every carrier paid on the load, with its payable (sync sends it only for 2+ carriers). */
+  carriers?: { name: string; cost: number }[];
   originCity?: string;
   originState?: string;
   destinationCity?: string;
@@ -71,6 +76,8 @@ export interface Load {
   arOpenBalance?: number; arPaid?: boolean; arLastPaymentDate?: string;
   apInvoiceNumber?: string; apInvoiceDate?: string; apDueDate?: string; apInvoiceAmount?: number;
   apOpenBalance?: number; apPaid?: boolean; apLastPaymentDate?: string;
+  /** Carrier invoice total in Turvo, only when it differs from what we owe (carrier payable). Open AP uses the payable. */
+  apSettlementAmount?: number;
 
   // --- Carrier service fields from the Turvo sync (turvo-mcp-server/report_fields.py) ---
   /** Carriers put on this load and later removed (tender fall-off; Turvo has no tender accept/reject events). */
