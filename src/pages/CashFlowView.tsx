@@ -102,6 +102,7 @@ export default function CashFlowView() {
  */
 function apCheck(l: Load, side?: 'ar' | 'ap'): string | undefined {
   if (side !== 'ap' || l.apSettlementAmount == null || l.apInvoiceAmount == null) return undefined;
+  if (l.apSettlementAmount <= l.apInvoiceAmount) return undefined;   // only flag carrier invoices above what we owe
   return `Carrier invoice ${usd(l.apSettlementAmount)} ≠ owed ${usd(l.apInvoiceAmount)}`;
 }
 
