@@ -308,6 +308,24 @@ describe('QA: uncovered loads (no carrier, $0 payable) are cost-pending, not 100
   });
 });
 
+describe('Revenue vs profit: loads with no carrier cost yet are called out', () => {
+  it('counts cost-pending loads so revenue - pendingRevenue = finRevenue', () => {
+    const a = aggregate([mk('F1'), mk('F2', { carrierCost: undefined, revenue: 500 })]);
+    expect(a.pendingLoads).toBe(1);
+    expect(a.pendingRevenue).toBe(500);
+    expect(a.revenue - a.pendingRevenue).toBe(a.finRevenue);
+  });
+
+  it('counts uncovered loads too, and is zero when every load has cost', () => {
+    const a = aggregate([mk('F1'), mk('U1', { carrierName: '', carrierCost: 0, revenue: 1200 })]);
+    expect(a.pendingLoads).toBe(1);
+    expect(a.revenue - a.pendingRevenue).toBe(a.finRevenue);
+    const full = aggregate([mk('F1'), mk('F2')]);
+    expect(full.pendingLoads).toBe(0);
+    expect(full.pendingRevenue).toBe(0);
+  });
+});
+
 describe('QA: days-since uses the real business date, not a fixed demo date', () => {
   it('is never negative for a recent ship date', () => {
     const today = businessTodayDate();

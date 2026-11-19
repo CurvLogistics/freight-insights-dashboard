@@ -191,8 +191,10 @@ export default function BusinessIntelligence(props: BusinessIntelligenceProps = 
         <CardContent>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-4">
             <HealthMetric label="Loads" info={METRIC_INFO.healthLoads} current={cur.loads.toString()} delta={hasPrev ? data.loadsDelta : null} isCount />
-            <HealthMetric label="Revenue" info={METRIC_INFO.healthRevenue} current={fmtCompact(cur.revenue)} delta={hasPrev ? data.revDelta : null} />
-            <HealthMetric label="Profit" info={METRIC_INFO.healthProfit} current={fmtCompact(cur.profit)} delta={hasPrev ? data.profitDelta : null} />
+            <HealthMetric label="Revenue" info={METRIC_INFO.healthRevenue} current={fmtCompact(cur.revenue)} delta={hasPrev ? data.revDelta : null}
+              note={cur.pendingLoads ? `incl. ${fmtCompact(cur.pendingRevenue)} with no carrier cost yet` : undefined} />
+            <HealthMetric label="Profit" info={METRIC_INFO.healthProfit} current={fmtCompact(cur.profit)} delta={hasPrev ? data.profitDelta : null}
+              note={cur.pendingLoads ? `excl. ${cur.pendingLoads} ${cur.pendingLoads === 1 ? 'load' : 'loads'} with no carrier cost yet` : undefined} />
             <HealthMetric label="Margin %" info={METRIC_INFO.healthMargin} current={pct(cur.margin)} delta={hasPrev ? { abs: data.marginDelta.abs, pct: 0, label: '' } : null} isMargin />
             <HealthMetric label="Avg Carrier Cost" info={METRIC_INFO.healthAvgCost} current={fmt(cur.avgCost)} delta={hasPrev ? data.costDelta : null} invertColor />
           </div>
@@ -422,8 +424,9 @@ export default function BusinessIntelligence(props: BusinessIntelligenceProps = 
   );
 }
 
-function HealthMetric({ label, current, delta: d, isCount, isMargin, invertColor, info }: {
+function HealthMetric({ label, current, delta: d, isCount, isMargin, invertColor, info, note }: {
   label: string;
+  note?: string;
   info?: { text: string; source: string };
   current: string;
   delta: { abs: number; pct: number; label: string } | null;
@@ -457,6 +460,7 @@ function HealthMetric({ label, current, delta: d, isCount, isMargin, invertColor
       </div>
       <p className="text-xl font-bold font-mono mt-0.5">{current}</p>
       {changeEl}
+      {note && <p className="text-[11px] text-muted-foreground mt-0.5 leading-snug">{note}</p>}
     </div>
   );
 }

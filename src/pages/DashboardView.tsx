@@ -41,6 +41,9 @@ export default function DashboardView() {
 
   const cur = aggregate(filteredLoads);
   const totalLoads = cur.loads, totalRevenue = cur.revenue, totalProfit = cur.profit, avgMargin = cur.margin;
+  const pendingPlural = cur.pendingLoads === 1 ? 'load' : 'loads';
+  const revenueNote = cur.pendingLoads ? `incl. ${fmtCompact(cur.pendingRevenue)} on ${cur.pendingLoads} ${pendingPlural} with no carrier cost yet` : undefined;
+  const profitNote = cur.pendingLoads ? `excl. ${cur.pendingLoads} ${pendingPlural} with no carrier cost yet (${fmtCompact(cur.pendingRevenue)} revenue)` : undefined;
 
   // Comparison period KPI metrics
   const prevPeriodMetrics = useMemo(() => {
@@ -232,13 +235,13 @@ export default function DashboardView() {
         <KPICard title="Filtered Loads" value={totalLoads.toString()} icon={Package} color="primary"
           tip={METRIC_INFO.filteredLoads.text} tipSource={METRIC_INFO.filteredLoads.source}
           comparison={prevPeriodMetrics ? { current: totalLoads, previous: prevPeriodMetrics.loads } : undefined} isCount compLabel={prevPeriodMetrics?.modeLabel} />
-        <KPICard title="Total Revenue" value={fmt(totalRevenue)} icon={DollarSign} color="primary"
+        <KPICard title="Total Revenue" value={fmt(totalRevenue)} icon={DollarSign} color="primary" note={revenueNote}
           tip={METRIC_INFO.totalRevenue.text} tipSource={METRIC_INFO.totalRevenue.source}
           comparison={prevPeriodMetrics ? { current: totalRevenue, previous: prevPeriodMetrics.revenue } : undefined} compLabel={prevPeriodMetrics?.modeLabel} />
-        <KPICard title="Gross Profit" value={fmt(totalProfit)} icon={totalProfit >= 0 ? TrendingUp : TrendingDown} color="accent"
+        <KPICard title="Gross Profit" value={fmt(totalProfit)} icon={totalProfit >= 0 ? TrendingUp : TrendingDown} color="accent" note={profitNote}
           comparison={prevPeriodMetrics ? { current: totalProfit, previous: prevPeriodMetrics.profit } : undefined} compLabel={prevPeriodMetrics?.modeLabel}
           tip={METRIC_INFO.grossProfit.text} tipSource={METRIC_INFO.grossProfit.source} />
-        <KPICard title="Margin %" value={pct(avgMargin)} icon={BarChart3} color="accent"
+        <KPICard title="Margin %" value={pct(avgMargin)} icon={BarChart3} color="accent" note={profitNote}
           comparison={prevPeriodMetrics ? { current: avgMargin, previous: prevPeriodMetrics.margin } : undefined} isMargin compLabel={prevPeriodMetrics?.modeLabel}
           tip={METRIC_INFO.marginPct.text} tipSource={METRIC_INFO.marginPct.source} />
       </div>
@@ -394,9 +397,10 @@ interface KPICardProps {
   compLabel?: string;
   tip?: string;
   tipSource?: string;
+  note?: string;
 }
 
-function KPICard({ title, value, icon: Icon, color, comparison, isMargin, isCount, compLabel = 'vs prior', tip, tipSource }: KPICardProps) {
+function KPICard({ title, value, icon: Icon, color, comparison, isMargin, isCount, compLabel = 'vs prior', tip, tipSource, note }: KPICardProps) {
   let changeEl: React.ReactNode = null;
   if (comparison && comparison.previous > 0) {
     const diff = comparison.current - comparison.previous;
@@ -423,6 +427,7 @@ function KPICard({ title, value, icon: Icon, color, comparison, isMargin, isCoun
             <div className="text-xs text-muted-foreground font-medium uppercase tracking-wide flex items-center gap-1">{title}{tip && <InfoTip text={tip} source={tipSource} />}</div>
             <p className="text-2xl font-bold mt-1 font-mono">{value}</p>
             {changeEl}
+            {note && <p className="text-[11px] text-muted-foreground mt-1 leading-snug">{note}</p>}
           </div>
           <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${color === 'accent' ? 'bg-accent/10' : 'bg-primary/10'}`}>
             <Icon className={`w-5 h-5 ${color === 'accent' ? 'text-accent' : 'text-primary'}`} />

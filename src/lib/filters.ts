@@ -122,16 +122,19 @@ export function selectExceptionLoads(raw: Load[], f: Filters): ComputedLoad[] {
 export interface Agg {
   loads: number; finLoads: number; revenue: number; finRevenue: number;
   cost: number; profit: number; margin: number; avgRevenue: number; avgCost: number;
+  /** Loads with revenue but no carrier cost yet (uncovered / cost pending): in revenue, not in profit or margin. */
+  pendingLoads: number; pendingRevenue: number;
 }
 export function aggregate(ls: Load[]): Agg {
-  let revenue = 0, finRevenue = 0, cost = 0, finLoads = 0;
+  let revenue = 0, finRevenue = 0, cost = 0, finLoads = 0, pendingLoads = 0, pendingRevenue = 0;
   for (const l of ls) {
     revenue += l.revenue ?? 0;
     if (hasFinancials(l)) { finLoads++; finRevenue += finRev(l); cost += finCost(l); }
+    else if (l.revenue) { pendingLoads++; pendingRevenue += l.revenue; }
   }
   const profit = finRevenue - cost;
   return {
-    loads: ls.length, finLoads, revenue, finRevenue, cost, profit,
+    loads: ls.length, finLoads, revenue, finRevenue, cost, profit, pendingLoads, pendingRevenue,
     margin: finRevenue > 0 ? (profit / finRevenue) * 100 : 0,
     avgRevenue: finLoads ? finRevenue / finLoads : 0,
     avgCost: finLoads ? cost / finLoads : 0,
