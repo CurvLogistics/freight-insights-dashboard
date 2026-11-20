@@ -42,7 +42,7 @@ export default function CashFlowView() {
           <InfoTip text={`Money in = open customer invoices by due date. Money out = open carrier invoices by due date. Loads not invoiced yet are estimated: AR at delivery + ${A.arInvoiceLagDays + A.arTermsDays} days, AP at delivery + ${A.apTermsDays} days.`} />
         </h2>
         <p className="text-muted-foreground text-sm mt-1">All open receivables and payables. Date filters don’t apply here.</p>
-        <DataWarnings warnings={hasFinance ? [] : ['No invoice data yet. Run a Turvo sync from Settings after the sync update is deployed.']} />
+        <DataWarnings warnings={hasFinance ? (OLD_AR_SYNCED ? [] : [OLD_AR_WARNING]) : ['No invoice data yet. Run a Turvo sync from Settings after the sync update is deployed.']} />
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
@@ -94,6 +94,16 @@ export default function CashFlowView() {
     </div>
   );
 }
+
+/**
+ * The sync only reaches loads picked up in the last 180 days (Turvo API limit), so unpaid invoices on
+ * older loads never get here (gap analysis 20 Nov 2026: ~$1.75M of open AR in Turvo's A/R report).
+ * Set to true once the sync keeps unpaid loads past 180 days, and the warning goes away.
+ */
+const OLD_AR_SYNCED = false;
+const OLD_AR_WARNING =
+  'Open AR only includes loads picked up in the last 180 days. Unpaid invoices on older loads are in Turvo but not here yet, ' +
+  'so Open AR, AR Past Due and Unpaid 180+ Days are understated. Use Turvo’s A/R report for older balances until this is fixed.';
 
 /**
  * Open AP is what we owe the carrier (payable after deductions). When the carrier's invoice in
