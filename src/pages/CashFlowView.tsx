@@ -102,7 +102,10 @@ export default function CashFlowView() {
  */
 function apCheck(l: Load, side?: 'ar' | 'ap'): string | undefined {
   if (side !== 'ap' || l.apSettlementAmount == null || l.apInvoiceAmount == null) return undefined;
-  if (l.apSettlementAmount <= l.apInvoiceAmount) return undefined;   // only flag carrier invoices above what we owe
+  if (l.apSettlementAmount <= l.apInvoiceAmount) return undefined;
+  // Invoice minus deductions/claims = what we owe → normal, not a Turvo error (e.g. CL-26018, CL-25771)
+  const explained = l.apSettlementAmount - (l.apDeductions ?? 0);
+  if (Math.abs(explained - l.apInvoiceAmount) < 1) return undefined;
   return `Carrier invoice ${usd(l.apSettlementAmount)} ≠ owed ${usd(l.apInvoiceAmount)}`;
 }
 

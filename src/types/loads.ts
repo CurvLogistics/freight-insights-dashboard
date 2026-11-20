@@ -78,7 +78,8 @@ export interface Load {
   apOpenBalance?: number; apPaid?: boolean; apLastPaymentDate?: string;
   /** Carrier invoice total in Turvo, only when it differs from what we owe (carrier payable). Open AP uses the payable. */
   apSettlementAmount?: number;
-
+  /** Carrier deductions/claims taken off the invoice (sync sends it with apSettlementAmount). */
+  apDeductions?: number;
   // --- Carrier service fields from the Turvo sync (turvo-mcp-server/report_fields.py) ---
   /** Carriers put on this load and later removed (tender fall-off; Turvo has no tender accept/reject events). */
   fallOffCarriers?: string[];
