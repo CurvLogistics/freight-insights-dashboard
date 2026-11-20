@@ -27,6 +27,8 @@ export interface LoadsResponse {
   lastSyncedAt: string | null;
   /** Set when the data is a saved snapshot rather than the latest sync. */
   snapshotAt: string | null;
+  /** Loads the last sync could not read from Turvo (sync: loads.json lastSyncFailed). null = not reported, e.g. a snapshot. */
+  lastSyncFailedCount: number | null;
 }
 
 export interface SnapshotInfo { takenAt: string; sizeBytes?: number }
@@ -43,7 +45,10 @@ export async function fetchLoadsFromApi(getToken: GetSessionToken, asOf?: string
     throw new Error(error || `Loads API error ${res.status}`);
   }
   const data = await res.json();
-  return { loads: data.loads ?? [], lastSyncedAt: data.lastSyncedAt ?? null, snapshotAt: data.snapshotAt ?? null };
+  return {
+    loads: data.loads ?? [], lastSyncedAt: data.lastSyncedAt ?? null, snapshotAt: data.snapshotAt ?? null,
+    lastSyncFailedCount: typeof data.lastSyncFailed === 'number' ? data.lastSyncFailed : null,
+  };
 }
 
 /** Saved snapshots, newest first. Empty if the sync server has none yet. */

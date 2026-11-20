@@ -22,7 +22,7 @@ const sourceLabels = {
 /** Sync changes shared data, so only roles with sync.run see the buttons (the server checks it too). */
 function TurvoSyncCard({ canSync }: { canSync: boolean }) {
   const { getToken } = useAuth();
-  const { dataSource, dataLoading, dataError, rawLoads, lastSyncedAt, refreshLoads } = useData();
+  const { dataSource, dataLoading, dataError, rawLoads, lastSyncedAt, lastSyncFailedCount, refreshLoads } = useData();
   const [syncing, setSyncing] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const bounds = getDatasetBounds(rawLoads);
@@ -92,6 +92,14 @@ function TurvoSyncCard({ canSync }: { canSync: boolean }) {
             <p className="font-medium mt-0.5">
               {lastSyncedAt ? formatUSDateTime(lastSyncedAt) : 'Never'}
             </p>
+            {/* Lets QA confirm a clean sync without server logs (QA 20 Nov: couldn't verify 0 failed loads). */}
+            {lastSyncFailedCount != null && (
+              <p className={`text-[11px] ${lastSyncFailedCount > 0 ? 'text-warning' : 'text-muted-foreground'}`}>
+                {lastSyncFailedCount === 0
+                  ? 'All loads read from Turvo · 0 failed'
+                  : `${lastSyncFailedCount.toLocaleString('en-US')} load${lastSyncFailedCount === 1 ? '' : 's'} failed to read from Turvo`}
+              </p>
+            )}
           </div>
         </div>
         {message && <p className="text-xs text-muted-foreground">{message}</p>}

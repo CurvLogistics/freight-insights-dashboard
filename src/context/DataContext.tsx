@@ -40,6 +40,8 @@ interface DataContextType {
   dataLoading: boolean;
   dataError: string | null;
   lastSyncedAt: string | null;
+  /** Loads the last sync could not read from Turvo (null = not reported by the sync server). */
+  lastSyncFailedCount: number | null;
   /** null = live (latest sync). Otherwise the snapshot time being shown. */
   asOf: string | null;
   setAsOf: (iso: string | null) => void;
@@ -74,6 +76,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [dataLoading, setDataLoading] = useState(true);
   const [dataError, setDataError] = useState<string | null>(null);
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
+  const [lastSyncFailedCount, setLastSyncFailedCount] = useState<number | null>(null);
   const [asOf, setAsOf] = useState<string | null>(null);
   const [snapshotAt, setSnapshotAt] = useState<string | null>(null);
   const [snapshots, setSnapshots] = useState<SnapshotInfo[]>([]);
@@ -88,16 +91,18 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     setDataLoading(true);
     setDataError(null);
     try {
-      const { loads: apiLoads, lastSyncedAt: synced, snapshotAt: snap } = await fetchLoadsFromApi(getToken, asOf);
+      const { loads: apiLoads, lastSyncedAt: synced, snapshotAt: snap, lastSyncFailedCount: failed } = await fetchLoadsFromApi(getToken, asOf);
       // One spelling per city ("The Bronx" / "Bronx"), so a lane is never split in two (RPT-19).
       setRawLoads(normalizeCityNames(dedupeLoads(apiLoads)));
       setDataSource(apiLoads.length > 0 ? 'turvo' : 'none');
       setLastSyncedAt(synced);
+      setLastSyncFailedCount(failed);
       setSnapshotAt(snap);
       if (apiLoads.length === 0) setDataError('No Turvo loads synced yet. Run a sync from Settings.');
     } catch (err) {
       setRawLoads([]);
       setSnapshotAt(null);
+      setLastSyncFailedCount(null);
       setDataSource('none');
       setDataError(err instanceof Error ? err.message : 'Could not reach Turvo sync');
     } finally {
@@ -166,7 +171,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       rawLoads, loads, prevLoads, compWindow, dataQuality, filters, setFilters,
       currentView, setCurrentView, importCSV, importBusy, teams, owners, equipmentTypes,
       comparisonMode, setComparisonMode, timeframePreset, setTimeframePreset,
-      viewMode, setViewMode, dataSource, dataLoading, dataError, lastSyncedAt,
+      viewMode, setViewMode, dataSource, dataLoading, dataError, lastSyncedAt, lastSyncFailedCount,
       asOf, setAsOf, snapshotAt, snapshots,
       refreshLoads, resetFilters, filtersActive,
     }}>

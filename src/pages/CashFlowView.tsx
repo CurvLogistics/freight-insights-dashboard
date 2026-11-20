@@ -96,13 +96,13 @@ export default function CashFlowView() {
 }
 
 /**
- * The sync only reaches loads picked up in the last 180 days (Turvo API limit), so unpaid invoices on
- * older loads never get here (gap analysis 20 Nov 2026: ~$1.75M of open AR in Turvo's A/R report).
- * Set to true once the sync keeps unpaid loads past 180 days, and the warning goes away.
+ * Loads picked up before 9 Jun 2026 were never synced (the first backfill could only reach 180 days
+ * back), so their unpaid invoices aren't here (gap analysis 20 Nov 2026: ~$1.75M in Turvo's A/R report).
+ * The sync keeps refreshing loads once stored. Set to true after backfilling those loads.
  */
 const OLD_AR_SYNCED = false;
 const OLD_AR_WARNING =
-  'Open AR only includes loads picked up in the last 180 days. Unpaid invoices on older loads are in Turvo but not here yet, ' +
+  'Open AR doesn’t include loads picked up before 9 Jun 2026. Unpaid invoices on those loads are in Turvo but not here yet, ' +
   'so Open AR, AR Past Due and Unpaid 180+ Days are understated. Use Turvo’s A/R report for older balances until this is fixed.';
 
 /**
